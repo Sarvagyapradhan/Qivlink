@@ -13,7 +13,7 @@ function formatBytes(bytes, decimals = 2) {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
 }
 
-export default function FileShareSection({ showToast, onSelectForQr }) {
+export default function FileShareSection({ deviceToken = '', onFileUploaded, onFileDeleted, showToast, onSelectForQr }) {
   const [files, setFiles] = useState([]);
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -22,7 +22,7 @@ export default function FileShareSection({ showToast, onSelectForQr }) {
 
   const loadFiles = async () => {
     try {
-      const active = await getActiveFiles();
+      const active = await getActiveFiles(deviceToken);
       setFiles(active);
     } catch (e) {
       console.warn('Files read error:', e);
@@ -31,7 +31,7 @@ export default function FileShareSection({ showToast, onSelectForQr }) {
 
   useEffect(() => {
     loadFiles();
-  }, []);
+  }, [deviceToken]);
 
   const handleFileUpload = async (file) => {
     if (!file) return;
@@ -43,9 +43,10 @@ export default function FileShareSection({ showToast, onSelectForQr }) {
 
     setIsUploading(true);
     try {
-      const uploaded = await uploadFileToCloud(file);
+      const uploaded = await uploadFileToCloud(file, deviceToken);
       showToast(`Uploaded ${file.name} successfully`, 'success');
       setFiles(prev => [uploaded, ...prev]);
+      if (onFileUploaded) onFileUploaded(uploaded);
     } catch (err) {
       showToast(err.message || 'File upload failed', 'danger');
     } finally {
@@ -64,8 +65,9 @@ export default function FileShareSection({ showToast, onSelectForQr }) {
 
   const handleDelete = async (id) => {
     try {
-      const remaining = await deleteFileFromCloud(id);
+      const remaining = await deleteFileFromCloud(id, deviceToken);
       setFiles(remaining);
+      if (onFileDeleted) onFileDeleted(id);
       showToast('File deleted', 'success');
     } catch (e) {
       showToast('Failed to delete file', 'danger');
@@ -154,19 +156,9 @@ export default function FileShareSection({ showToast, onSelectForQr }) {
               {files.map((file) => (
                 <div
                   key={file.id}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '12px 16px',
-                    background: 'var(--bg-subtle)',
-                    border: '1px solid var(--border-default)',
-                    borderRadius: 'var(--radius-md)',
-                    gap: '12px',
-                    flexWrap: 'wrap'
-                  }}
+                  className="file-item-card"
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: '200px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', minWidth: '180px' }}>
                     <div style={{
                       width: '36px',
                       height: '36px',
@@ -175,7 +167,8 @@ export default function FileShareSection({ showToast, onSelectForQr }) {
                       color: 'var(--primary-accent)',
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'center'
+                      justifyContent: 'center',
+                      flexShrink: 0
                     }}>
                       <File size={18} />
                     </div>
@@ -193,7 +186,7 @@ export default function FileShareSection({ showToast, onSelectForQr }) {
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <div className="file-actions-row" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <button
                       type="button"
                       className="btn btn-sm btn-secondary btn-icon-only"

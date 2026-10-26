@@ -88,6 +88,7 @@ html, body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
 }
 
 /* Subtle, pleasant background gradient without heavy blurring */
@@ -811,19 +812,238 @@ input:checked + .slider-round:before {
   gap: 12px;
 }
 
-@media (max-width: 640px) {
+/* Responsive Form Grids */
+.form-row-2col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+/* History Responsive Views */
+.history-desktop-table {
+  display: block;
+}
+
+.history-mobile-cards {
+  display: none;
+}
+
+.history-mobile-card {
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  padding: 14px;
+}
+
+/* Navbar Top Row Default */
+.navbar-top-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.theme-toggle-wrap {
+  display: flex;
+  align-items: center;
+}
+
+/* ==========================================================================
+   Comprehensive Mobile & Tablet Media Queries
+   ========================================================================== */
+@media (max-width: 820px) {
+  .site-container {
+    padding: 0 16px;
+  }
+  
+  /* Responsive Navbar: top row brand + theme, bottom row scrollable pills */
   .app-navbar {
     flex-direction: column;
     align-items: stretch;
     border-radius: var(--radius-lg);
+    padding: 10px 14px;
+    gap: 10px;
+    margin: 10px auto 18px;
+    width: calc(100% - 20px);
   }
+
+  .navbar-top-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+  }
+
   .nav-tabs {
-    justify-content: center;
+    display: flex;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding: 4px;
+    width: 100%;
+    justify-content: flex-start;
+    gap: 4px;
   }
+
+  .nav-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .nav-tab-btn {
+    flex-shrink: 0;
+    padding: 6px 12px;
+    font-size: 0.8rem;
+    gap: 5px;
+  }
+}
+
+@media (max-width: 640px) {
+  .site-container {
+    padding: 0 12px;
+  }
+
   .clean-title {
-    font-size: 1.5rem;
+    font-size: 1.4rem;
   }
+
+  .clean-desc {
+    font-size: 0.84rem;
+  }
+
   .glass-panel {
-    padding: 18px 16px;
+    padding: 16px 14px;
+    border-radius: var(--radius-md);
+  }
+
+  /* Forms collapse cleanly to 1 column */
+  .form-row-2col {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  /* Result Box wraps gracefully */
+  .result-main {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .result-url-display {
+    width: 100%;
+  }
+
+  .result-link-text {
+    word-break: break-all;
+    font-size: 0.86rem;
+  }
+
+  /* 2x2 grid for action buttons on mobile */
+  .result-actions {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    width: 100%;
+  }
+
+  .result-actions .btn {
+    width: 100%;
+    justify-content: center;
+    padding: 8px 10px;
+    font-size: 0.8rem;
+  }
+
+  /* Toggle row wraps nicely */
+  .toggle-row {
+    padding: 10px 12px;
+  }
+  .toggle-title {
+    font-size: 0.82rem;
+  }
+  .toggle-desc {
+    font-size: 0.74rem;
+  }
+
+  /* History mobile cards replace wide table */
+  .history-desktop-table {
+    display: none;
+  }
+
+  .history-mobile-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .history-item-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .history-item-row > div:last-child {
+    display: flex;
+    justify-content: flex-end;
+    width: 100%;
+  }
+
+  /* File item cards on mobile */
+  .file-item-card {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .file-actions-row {
+    display: flex;
+    justify-content: flex-end;
+    width: 100%;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-default);
+  }
+
+  .app-footer {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 8px;
+    padding: 18px 0;
+  }
+}
+
+@media (max-width: 420px) {
+  .site-container {
+    padding: 0 8px;
+  }
+
+  .app-navbar {
+    width: calc(100% - 12px);
+    margin: 8px auto 14px;
+    padding: 8px 10px;
+  }
+
+  .nav-tab-btn {
+    padding: 5px 9px;
+    font-size: 0.74rem;
+  }
+
+  .nav-tab-btn span {
+    font-size: 0.74rem;
+  }
+
+  .input-text {
+    font-size: 0.86rem;
+    padding: 9px 10px 9px 34px;
+  }
+
+  .input-text.no-icon {
+    padding-left: 10px;
+  }
+
+  .btn {
+    padding: 8px 12px;
+    font-size: 0.82rem;
+  }
+
+  .result-actions {
+    grid-template-columns: 1fr;
   }
 }

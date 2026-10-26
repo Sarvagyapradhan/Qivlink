@@ -88,10 +88,10 @@ export default function App() {
   const refreshAll = async () => {
     try {
       const [fetchedLinks, fetchedTransfers, fetchedPastes, fetchedFiles] = await Promise.all([
-        getActiveLinks(),
+        getActiveLinks(localDevice.token),
         getAllTransfers(),
-        getActivePastes(),
-        getActiveFiles(),
+        getActivePastes(localDevice.token),
+        getActiveFiles(localDevice.token),
         registerDeviceInCloud(localDevice)
       ]);
       setLinks(fetchedLinks);
@@ -193,6 +193,8 @@ export default function App() {
 
         {activeTab === 'paste' && (
           <PasteDocSection
+            deviceToken={localDevice.token}
+            onDocCreated={(newDoc) => setPastes(prev => [newDoc, ...prev.filter(p => p.id !== newDoc.id)])}
             showToast={showToast}
             onSelectForQr={handleSelectForQr}
           />
@@ -200,6 +202,9 @@ export default function App() {
 
         {activeTab === 'files' && (
           <FileShareSection
+            deviceToken={localDevice.token}
+            onFileUploaded={(newFile) => setFiles(prev => [newFile, ...prev.filter(f => f.id !== newFile.id)])}
+            onFileDeleted={(id) => setFiles(prev => prev.filter(f => f.id !== id))}
             showToast={showToast}
             onSelectForQr={handleSelectForQr}
           />
@@ -220,7 +225,9 @@ export default function App() {
             links={links}
             pastes={pastes}
             files={files}
-            onLinkDeleted={(updated) => setLinks(updated)}
+            onLinkDeleted={(id) => setLinks(prev => prev.filter(l => l.id !== id))}
+            onPasteDeleted={(id) => setPastes(prev => prev.filter(p => p.id !== id))}
+            onFileDeleted={(id) => setFiles(prev => prev.filter(f => f.id !== id))}
             onRefresh={refreshAll}
             onSelectForQr={handleSelectForQr}
             currentDeviceToken={localDevice.token}

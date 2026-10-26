@@ -6,7 +6,7 @@ import {
 import { marked } from 'marked';
 import { createPasteDoc } from '../supabase.js';
 
-export default function PasteDocSection({ showToast, onSelectForQr }) {
+export default function PasteDocSection({ deviceToken = '', onDocCreated, showToast, onSelectForQr }) {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [viewMode, setViewMode] = useState('write'); // 'write' | 'preview'
@@ -46,9 +46,11 @@ export default function PasteDocSection({ showToast, onSelectForQr }) {
       const doc = await createPasteDoc({
         title,
         content,
-        format: 'markdown'
+        format: 'markdown',
+        deviceToken
       });
       setSavedDoc(doc);
+      if (onDocCreated) onDocCreated(doc);
       showToast('Content published with 7-day retention', 'success');
     } catch (err) {
       showToast(err.message || 'Failed to save paste', 'danger');
@@ -147,20 +149,9 @@ export default function PasteDocSection({ showToast, onSelectForQr }) {
         </div>
 
         {/* Toolbar & View Switcher */}
-        <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: '8px',
-          background: 'var(--bg-subtle)',
-          padding: '8px 12px',
-          borderRadius: 'var(--radius-md)',
-          marginBottom: '10px',
-          border: '1px solid var(--border-default)'
-        }}>
+        <div className="paste-toolbar">
           {/* Formatting buttons */}
-          <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+          <div className="paste-toolbar-group">
             <button
               type="button"
               className="icon-btn"

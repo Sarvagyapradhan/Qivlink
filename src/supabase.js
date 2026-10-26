@@ -105,7 +105,7 @@ export async function setStorageData(key, value) {
  */
 export const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB Supabase bucket limit
 
-export async function uploadFileToCloud(file) {
+export async function uploadFileToCloud(file, deviceToken = '') {
   if (!file) throw new Error('No file provided');
   if (file.size > MAX_FILE_SIZE) {
     throw new Error('File exceeds the 10MB storage limit');
@@ -137,6 +137,7 @@ export async function uploadFileToCloud(file) {
     type: file.type || 'unknown',
     storagePath,
     url: urlData.publicUrl,
+    creatorDevice: deviceToken,
     createdAt: timestamp,
     expiresAt: timestamp + SEVEN_DAYS_MS
   };
@@ -148,26 +149,31 @@ export async function uploadFileToCloud(file) {
   return fileItem;
 }
 
-export async function getActiveFiles() {
+export async function getActiveFiles(deviceToken = null) {
   const files = await getStorageData('files', []);
-  return files.filter(f => !isExpired(f.createdAt));
+  const active = files.filter(f => !isExpired(f.createdAt));
+  if (!deviceToken) return active;
+  return active.filter(f => f.creatorDevice && f.creatorDevice === deviceToken);
 }
 
-export async function deleteFileFromCloud(fileId) {
-  const files = await getActiveFiles();
+export async function deleteFileFromCloud(fileId, deviceToken = null) {
+  const files = await getStorageData('files', []);
   const target = files.find(f => f.id === fileId);
   if (target && target.storagePath) {
     supabase.storage.from(SUPABASE_CONFIG.bucketName).remove([target.storagePath]).catch(() => {});
   }
   const filtered = files.filter(f => f.id !== fileId);
   await setStorageData('files', filtered);
+  if (deviceToken) {
+    return filtered.filter(f => f.creatorDevice && f.creatorDevice === deviceToken);
+  }
   return filtered;
 }
 
 /**
  * Long-Form Paste / Docs Helpers (Markdown, Short URL, QR, PDF Export)
  */
-export async function createPasteDoc({ title = '', content = '', format = 'markdown' }) {
+export async function createPasteDoc({ title = '', content = '', format = 'markdown', deviceToken = '' }) {
   if (!content || !content.trim()) {
     throw new Error('Content cannot be empty');
   }
@@ -180,6 +186,7 @@ export async function createPasteDoc({ title = '', content = '', format = 'markd
     title: (title || '').trim() || 'Untitled Note',
     content: content.trim(),
     format,
+    creatorDevice: (deviceToken || '').trim(),
     createdAt: now,
     expiresAt: now + SEVEN_DAYS_MS
   };
@@ -190,24 +197,29 @@ export async function createPasteDoc({ title = '', content = '', format = 'markd
   return pasteItem;
 }
 
-export async function getActivePastes() {
+export async function getActivePastes(deviceToken = null) {
   const pastes = await getStorageData('pastes', []);
-  return pastes.filter(p => !isExpired(p.createdAt));
+  const active = pastes.filter(p => !isExpired(p.createdAt));
+  if (!deviceToken) return active;
+  return active.filter(p => p.creatorDevice && p.creatorDevice === deviceToken);
 }
 
 export async function getPasteByIdOrCode(identifier) {
   if (!identifier) return null;
   const clean = identifier.trim().toLowerCase();
-  const pastes = await getActivePastes();
+  const pastes = await getActivePastes(null); // lookup allows opening by anyone with link
   const found = pastes.find(p => p.id.toLowerCase() === clean || p.code.toLowerCase() === clean);
   if (!found || isExpired(found.createdAt)) return null;
   return found;
 }
 
-export async function deletePasteDoc(id) {
-  const pastes = await getActivePastes();
+export async function deletePasteDoc(id, deviceToken = null) {
+  const pastes = await getStorageData('pastes', []);
   const filtered = pastes.filter(p => p.id !== id);
   await setStorageData('pastes', filtered);
+  if (deviceToken) {
+    return filtered.filter(p => p.creatorDevice && p.creatorDevice === deviceToken);
+  }
   return filtered;
 }
 

@@ -207,7 +207,7 @@ export default function SharingSection({
               />
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+            <div className="form-row-2col">
               <div className="form-group">
                 <div className="form-label-row">
                   <label htmlFor="target-id" className="form-label">Target Device ID (Optional)</label>
@@ -258,11 +258,11 @@ export default function SharingSection({
               Enter the drop code given by the sender.
             </p>
 
-            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
               <input
                 type="text"
                 className="input-text no-icon input-mono"
-                style={{ maxWidth: '220px', textTransform: 'uppercase' }}
+                style={{ flex: 1, minWidth: '130px', textTransform: 'uppercase' }}
                 placeholder="e.g. QIV-3942"
                 value={pickupCode}
                 onChange={(e) => setPickupCode(e.target.value)}
@@ -270,12 +270,12 @@ export default function SharingSection({
               <input
                 type="password"
                 className="input-text no-icon"
-                style={{ maxWidth: '160px' }}
+                style={{ flex: 1, minWidth: '120px' }}
                 placeholder="Passcode (if any)"
                 value={redeemPasscode}
                 onChange={(e) => setRedeemPasscode(e.target.value)}
               />
-              <button type="submit" className="btn btn-primary btn-sm" disabled={isRedeeming}>
+              <button type="submit" className="btn btn-primary btn-sm" disabled={isRedeeming} style={{ whiteSpace: 'nowrap' }}>
                 <span>Get Content</span>
               </button>
             </div>

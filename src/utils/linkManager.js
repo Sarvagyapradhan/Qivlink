@@ -75,7 +75,7 @@ export function generateShortCode(length = 6) {
 /**
  * Fetch all active links from Supabase with 7-day auto-prune
  */
-export async function getActiveLinks() {
+export async function getActiveLinks(deviceToken = null) {
   let links = [];
   try {
     links = await getStorageData('links', []);
@@ -90,7 +90,7 @@ export async function getActiveLinks() {
   const activeLinks = (links || []).filter(l => !isExpired(l.createdAt));
 
   // If expired links were dropped, update cache & storage
-  if (activeLinks.length !== links.length) {
+  if (activeLinks.length !== (links || []).length) {
     setStorageData('links', activeLinks).catch(console.error);
   }
 
@@ -98,7 +98,8 @@ export async function getActiveLinks() {
     localStorage.setItem(LOCAL_LINKS_CACHE, JSON.stringify(activeLinks));
   } catch (e) {}
 
-  return activeLinks;
+  if (!deviceToken) return activeLinks;
+  return activeLinks.filter(l => l.creatorDevice && l.creatorDevice === deviceToken);
 }
 
 /**
@@ -122,7 +123,7 @@ export async function createShortLink({
     code = generateShortCode(6);
   }
 
-  const existing = await getActiveLinks();
+  const existing = await getActiveLinks(null);
   if (existing.some(l => l.shortCode.toLowerCase() === code.toLowerCase())) {
     throw new Error(`The alias "${code}" is already active. Please pick another one or leave blank for auto-generation.`);
   }
@@ -144,7 +145,7 @@ export async function createShortLink({
     targetUrl: cleanUrl,
     title: linkTitle,
     stripTracking,
-    creatorDevice: (deviceToken || '').slice(0, 32),
+    creatorDevice: (deviceToken || '').trim().slice(0, 32),
     createdAt: now,
     expiresAt: now + SEVEN_DAYS_MS,
     clicks: 0
@@ -163,13 +164,16 @@ export async function createShortLink({
 /**
  * Delete a link by ID
  */
-export async function deleteLink(id) {
-  const current = await getActiveLinks();
+export async function deleteLink(id, deviceToken = null) {
+  const current = await getActiveLinks(null);
   const filtered = current.filter(l => l.id !== id);
   await setStorageData('links', filtered);
   try {
     localStorage.setItem(LOCAL_LINKS_CACHE, JSON.stringify(filtered));
   } catch (e) {}
+  if (deviceToken) {
+    return filtered.filter(l => l.creatorDevice && l.creatorDevice === deviceToken);
+  }
   return filtered;
 }
 
@@ -179,7 +183,7 @@ export async function deleteLink(id) {
 export async function resolveLink(code) {
   if (!code) return null;
   const cleanCode = code.trim().toLowerCase();
-  const current = await getActiveLinks();
+  const current = await getActiveLinks(null); // Global lookup for redirect route
   const link = current.find(l => l.shortCode.toLowerCase() === cleanCode);
   
   if (!link) return null;
