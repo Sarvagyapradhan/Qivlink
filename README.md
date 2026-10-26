@@ -1,81 +1,90 @@
 # Qivlink — Privacy Link Shortener & Offline QR Studio
 
-**Qivlink** is a fast, privacy-focused URL shortening service designed for instantaneous link generation, zero-tracking redirects, offline vector QR code exports, cross-device content transfer with unique device pairing tokens, and an automated **7-day rolling data lifecycle**.
+**Qivlink** is a high-speed, privacy-first URL shortening and content sharing system designed for instantaneous link generation, zero-tracking redirects, offline vector QR exports, end-to-end encrypted cross-device transfers with pairing tokens, and an automated **7-day rolling data lifecycle**.
 
 ---
 
-## Key Features
+## Architecture & Security Model
 
-1. **Instantaneous Privacy Link Generation**:
-   - Zero-tracking redirect engine that strips UTM tracking tags, `fbclid`, and `gclid`.
-   - Custom alias support or clean 6-character auto-generated hash.
-   - Immediate redirect preview and 1-click clipboard actions.
+### 1. Zero-Tracking & Protocol Whitelist
+- **Allowed Schemes**: Strictly `http:` and `https:`.
+- **Blocked Attacks**: Automatically rejects dangerous URI schemes (`javascript:`, `data:`, `vbscript:`, `file:`, `blob:`, etc.).
+- **SSRF / Loopback Protection**: Blocks loopback and intranet addresses (`localhost`, `127.0.0.1`, `0.0.0.0`, `169.254.169.254`, `[::1]`).
+- **Telemetry Cleaner**: Automatically strips tracking query tags (`utm_*`, `fbclid`, `gclid`, `mc_eid`, `twclid`, `igshid`, etc.) before redirect.
 
-2. **Offline Vector QR Studio**:
-   - 100% client-side vector rendering with zero network transmissions.
-   - SVG vector download (lossless for design and print).
-   - High-resolution 1024px PNG export.
-   - Direct image copy to system clipboard.
-   - Designer presets (Slate, Midnight, Forest, Plum, Cobalt) and transparent background toggle.
+### 2. End-to-End Encryption (AES-256-GCM)
+- Cross-device beamed notes, links, or snippets with passcodes are encrypted client-side using the **Web Crypto API (AES-256-GCM)** with PBKDF2 key derivation (100,000 iterations of SHA-256).
+- Zero cleartext payload is stored in Supabase when passcode protection is active.
 
-3. **Device Beam & Cross-Device Transfer**:
-   - Unique device identity generation (e.g. `QIV-XXXX-XXX`) and 6-digit pair PIN.
-   - Targeted transfers to specific devices with direct inbox routing.
-   - Quick pickup codes (e.g. `QIV-3415`) for ad-hoc sharing to mobile devices.
-   - Optional passcode encryption and "burn after first read".
+### 3. Automated 7-Day Rolling Retention
+- Strict 168-hour TTL on all shortened links, device registrations, and transfer queues.
+- Real-time client and background purge routines remove expired records automatically.
 
-4. **Automated 7-Day Rolling Retention**:
-   - Every shortened link and device transfer has a strict 168-hour (7-day) TTL.
-   - Expired records are automatically purged on fetch and interval routines.
-   - Visual countdown badges show remaining validity (e.g., `6d 23h left`).
-
-5. **Crafted Designer UI/UX**:
-   - Non-AI generated look and feel: human, calm, and professional.
-   - Soft, flowing ambient mesh gradients with smooth translucent glass cards (`backdrop-filter: blur(28px)`).
-   - Pure Vanilla CSS design system with light and dark mode support.
-   - Zero marketing hype copy or redundant buzzwords.
-
-6. **Supabase Cloud Backend**:
-   - Synchronized across devices using Supabase storage bucket (`qivlink_store`).
-   - Integrated with user-provided Supabase project (`https://wjjvobqwnnlzxsovjovx.supabase.co`).
-   - Includes ready-to-run PostgreSQL table schemas and auto-purge functions in the in-app Supabase drawer.
+### 4. HTTP Security Headers & SPA Routing
+- Configured in `vercel.json`:
+  - `Content-Security-Policy`
+  - `X-Frame-Options: DENY` (anti-clickjacking)
+  - `X-Content-Type-Options: nosniff` (anti-MIME sniffing)
+  - `Referrer-Policy: strict-origin-when-cross-origin`
+  - `Strict-Transport-Security: max-age=63072000; includeSubDomains; preload` (HSTS)
+  - `Permissions-Policy: camera=(), microphone=(), geolocation=()`
 
 ---
 
-## Project Structure
+## Branches & CI/CD Pipeline
 
-```
-qivlink/
-├── index.html
-├── package.json
-├── vite.config.js
-├── src/
-│   ├── main.jsx
-│   ├── App.jsx
-│   ├── index.css
-│   ├── supabase.js
-│   ├── components/
-│   │   ├── Navbar.jsx
-│   │   ├── ShortenerSection.jsx
-│   │   ├── QRStudioSection.jsx
-│   │   ├── DeviceBeamSection.jsx
-│   │   ├── VaultSection.jsx
-│   │   ├── SupabaseModal.jsx
-│   │   └── RedirectHandler.jsx
-│   └── utils/
-│       ├── deviceIdentity.js
-│       ├── linkManager.js
-│       ├── deviceTransferManager.js
-│       └── qrGenerator.js
-```
+The repository uses a dual-branch trunk model:
+- **`dev` branch**: Feature development, staging, and automated CI test checks.
+- **`main` branch**: Production release branch deployed directly to Vercel.
+
+### GitHub Actions Workflows
+
+1. **CI Pipeline (`.github/workflows/ci.yml`)**:
+   - Triggers on: Push to `dev`, PRs to `main` and `dev`.
+   - Runs `npm ci`, security audit (`npm audit --audit-level=high`), and bundle compilation (`npm run build`).
+
+2. **CD Pipeline (`.github/workflows/deploy.yml`)**:
+   - Triggers on: Push / merge to `main`.
+   - Runs build verification and deploys directly to Vercel production.
+
+### Connecting to Vercel
+
+#### Option A: Zero-Config Vercel Dashboard (Recommended)
+1. Go to [vercel.com](https://vercel.com) and click **"Add New Project"**.
+2. Select your repository: **`Sarvagyapradhan/Qivlink`**.
+3. In **Environment Variables**, add:
+   - `VITE_SUPABASE_URL`
+   - `VITE_SUPABASE_ANON_KEY`
+   - `VITE_SUPABASE_SERVICE_KEY`
+   - `VITE_SUPABASE_PUBLISHABLE_KEY`
+   - `VITE_SUPABASE_SECRET_KEY`
+   - `VITE_SUPABASE_BUCKET` = `qivlink_store`
+4. Click **Deploy**. Vercel will automatically build and deploy every push to `main`!
+
+#### Option B: Automated GitHub Actions Deployment
+Add the following secrets under **Repository Settings -> Secrets and variables -> Actions**:
+- `VERCEL_TOKEN`: Your Vercel personal access token.
+- `VERCEL_ORG_ID`: Your Vercel organization/account ID.
+- `VERCEL_PROJECT_ID`: Your Vercel project ID.
 
 ---
 
-## Running Locally
+## Local Development
 
 ```bash
-# In the project directory:
-npm run dev
-```
+# Clone the repository
+git clone https://github.com/Sarvagyapradhan/Qivlink.git
+cd Qivlink
 
-The application will be live at `http://localhost:5173/`.
+# Switch to development branch
+git checkout dev
+
+# Install dependencies
+npm install
+
+# Start local development server
+npm run dev
+
+# Run production build check
+npm run build
+```
