@@ -261,9 +261,9 @@ export default function DeviceBeamSection({
         <div className="glass-panel">
           <div className="panel-header">
             <div>
-              <h3 className="panel-title">Beam Content to Selected Device</h3>
+              <h3 className="panel-title">Share with Device</h3>
               <p className="panel-description">
-                Direct cross-device sharing with 7-day retention and zero permanent storage.
+                Send links or snippets directly to another device token.
               </p>
             </div>
           </div>

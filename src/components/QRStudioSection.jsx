@@ -107,15 +107,11 @@ export default function QRStudioSection({ initialValue = '', showToast }) {
               <QrCode size={18} />
             </div>
             <div>
-              <h2 className="panel-title">Offline Vector QR Studio</h2>
+              <h2 className="panel-title">QR Studio</h2>
               <p className="panel-description">
-                100% Client-side generation. Zero telemetry or network requests.
+                Generate offline vector SVG or high-resolution PNG.
               </p>
             </div>
-          </div>
-          <div className="retention-chip" style={{ background: 'var(--success-bg)', color: 'var(--success)' }}>
-            <Shield size={13} />
-            <span>Air-Gapped Offline</span>
           </div>
         </div>
 

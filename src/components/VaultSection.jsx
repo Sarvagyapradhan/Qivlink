@@ -66,9 +66,9 @@ export default function VaultSection({
               <HardDrive size={18} />
             </div>
             <div>
-              <h2 className="panel-title">Active 7-Day Link Vault</h2>
+              <h2 className="panel-title">Links Vault</h2>
               <p className="panel-description">
-                Real-time synchronized index. All items expire exactly 168 hours post-creation.
+                Active shortened links and remaining duration.
               </p>
             </div>
           </div>
@@ -78,7 +78,7 @@ export default function VaultSection({
               type="button"
               className="icon-btn"
               onClick={onRefresh}
-              title="Sync with Supabase"
+              title="Refresh links"
             >
               <RefreshCw size={15} />
             </button>

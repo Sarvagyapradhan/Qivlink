@@ -1,12 +1,11 @@
 import React from 'react';
-import { Link2, QrCode, Radio, Database, Sun, Moon, ShieldCheck, HardDrive } from 'lucide-react';
+import { Link2, QrCode, Radio, HardDrive, Sun, Moon } from 'lucide-react';
 
 export default function Navbar({
   activeTab,
   setActiveTab,
   theme,
   toggleTheme,
-  onOpenSupabaseModal,
   linksCount = 0,
   transfersCount = 0
 }) {
@@ -14,12 +13,9 @@ export default function Navbar({
     <header className="app-navbar">
       <div className="brand-wrapper">
         <div className="brand-icon-box">
-          <Link2 size={20} strokeWidth={2.5} />
+          <Link2 size={19} strokeWidth={2.5} />
         </div>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
-          <span className="brand-text">Qivlink</span>
-          <span className="brand-tag">7D Rolling</span>
-        </div>
+        <span className="brand-text">Qivlink</span>
       </div>
 
       <nav className="nav-tabs" aria-label="Main Navigation">
@@ -68,12 +64,11 @@ export default function Navbar({
           {linksCount > 0 && (
             <span style={{
               fontSize: '0.7rem',
-              background: 'var(--pill-bg)',
+              background: 'var(--border-default)',
               color: 'var(--text-secondary)',
               padding: '1px 6px',
               borderRadius: '9999px',
-              marginLeft: '2px',
-              border: '1px solid var(--glass-border-subtle)'
+              marginLeft: '2px'
             }}>
               {linksCount}
             </span>
@@ -81,18 +76,7 @@ export default function Navbar({
         </button>
       </nav>
 
-      <div className="nav-actions">
-        <button
-          className="btn btn-sm btn-secondary"
-          onClick={onOpenSupabaseModal}
-          title="Supabase Cloud Engine & SQL Schema"
-          style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-        >
-          <Database size={14} color="#10b981" />
-          <span style={{ fontSize: '0.8rem', fontWeight: 500 }}>Supabase</span>
-          <span className="pulse-dot" style={{ width: '6px', height: '6px' }} />
-        </button>
-
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
         <button
           className="icon-btn"
           onClick={toggleTheme}

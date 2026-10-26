@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link2, Sparkles, Copy, Check, QrCode, ExternalLink, ShieldCheck, ArrowRight, Radio } from 'lucide-react';
+import { Link2, Copy, Check, QrCode, ExternalLink, ShieldCheck, ArrowRight, Radio } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { createShortLink } from '../utils/linkManager.js';
 import { getRemainingTime } from '../supabase.js';
@@ -40,13 +40,13 @@ export default function ShortenerSection({
       setUrl('');
       setCustomAlias('');
       setTitle('');
-      showToast('Link shortened successfully with 7-day retention', 'success');
+      showToast('Link shortened successfully', 'success');
 
       try {
         confetti({
-          particleCount: 35,
-          spread: 60,
-          origin: { y: 0.65 }
+          particleCount: 25,
+          spread: 50,
+          origin: { y: 0.6 }
         });
       } catch (err) {}
 
@@ -73,15 +73,11 @@ export default function ShortenerSection({
 
   return (
     <div className="shortener-container">
-      {/* Non-AI Artisan Hero */}
-      <div className="hero-compact">
-        <div className="hero-pill-badge">
-          <span className="pulse-dot" />
-          <span>Zero Telemetry · 7-Day Rolling Retention</span>
-        </div>
-        <h1 className="hero-title">Instant Privacy Link Shortener</h1>
-        <p className="hero-subtitle">
-          Clean URLs without surveillance redirects, pixel trackers, or persistent logging. Every shortened link automatically dissolves after 7 days.
+      {/* Clean, Non-AI Header */}
+      <div className="clean-header">
+        <h1 className="clean-title">Link Shortener</h1>
+        <p className="clean-desc">
+          Instant link generation with zero tracking and offline QR exports.
         </p>
       </div>
 
@@ -98,7 +94,7 @@ export default function ShortenerSection({
                 id="url-input"
                 type="text"
                 className="input-text"
-                placeholder="https://example.com/very/long/article?utm_source=tracker"
+                placeholder="https://example.com/long-article-link"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 autoComplete="off"
@@ -111,14 +107,13 @@ export default function ShortenerSection({
             <div className="form-group">
               <div className="form-label-row">
                 <label htmlFor="alias-input" className="form-label">Custom Alias (Optional)</label>
-                <span className="form-hint">Letters, numbers, dashes</span>
               </div>
               <div className="input-wrapper">
                 <input
                   id="alias-input"
                   type="text"
                   className="input-text no-icon input-mono"
-                  placeholder="e.g. spring-release"
+                  placeholder="e.g. project-doc"
                   value={customAlias}
                   onChange={(e) => setCustomAlias(e.target.value)}
                   autoComplete="off"
@@ -129,14 +124,13 @@ export default function ShortenerSection({
             <div className="form-group">
               <div className="form-label-row">
                 <label htmlFor="title-input" className="form-label">Title / Note (Optional)</label>
-                <span className="form-hint">For your vault index</span>
               </div>
               <div className="input-wrapper">
                 <input
                   id="title-input"
                   type="text"
                   className="input-text no-icon"
-                  placeholder="e.g. Client Design Brief"
+                  placeholder="e.g. Design brief"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   autoComplete="off"
@@ -150,10 +144,10 @@ export default function ShortenerSection({
             <div className="toggle-info">
               <span className="toggle-title" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <ShieldCheck size={16} color="#059669" />
-                Sanitize Trackers & UTM Parameters
+                Strip Tracking Parameters (UTMs, fbclid, gclid)
               </span>
               <span className="toggle-desc">
-                Automatically strips fbclid, gclid, and UTM tracking tags before redirection.
+                Removes telemetry identifiers before redirecting.
               </span>
             </div>
             <label className="switch-pill">
@@ -166,9 +160,9 @@ export default function ShortenerSection({
             </label>
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '20px' }}>
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)' }}>
-              Auto-purges 168 hours from creation
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px' }}>
+            <div style={{ fontSize: '0.82rem', color: 'var(--text-tertiary)' }}>
+              7-day retention
             </div>
             <button
               type="submit"
@@ -186,7 +180,7 @@ export default function ShortenerSection({
           <div className="result-box">
             <div className="result-main">
               <div className="result-url-display">
-                <span className="result-label">Generated Privacy Link</span>
+                <span className="result-label">Generated Link</span>
                 <a
                   href={shortUrl}
                   target="_blank"
@@ -232,10 +226,10 @@ export default function ShortenerSection({
                   target="_blank"
                   rel="noopener noreferrer"
                   className="btn btn-primary btn-sm"
-                  title="Test zero-tracking redirect"
+                  title="Open link"
                 >
                   <ExternalLink size={14} />
-                  <span>Test</span>
+                  <span>Open</span>
                 </a>
               </div>
             </div>
@@ -243,7 +237,7 @@ export default function ShortenerSection({
             <div className="result-meta-row">
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <span style={{ color: 'var(--text-tertiary)' }}>Target:</span>
-                <span style={{ maxWidth: '380px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <span style={{ maxWidth: '360px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {lastCreated.targetUrl}
                 </span>
               </div>
