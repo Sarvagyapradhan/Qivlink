@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link2, QrCode, Radio, HardDrive, Sun, Moon } from 'lucide-react';
+import { Link2, QrCode, FileText, Upload, Radio, Clock, Sun, Moon } from 'lucide-react';
 
 export default function Navbar({
   activeTab,
@@ -23,7 +23,7 @@ export default function Navbar({
           className={`nav-tab-btn ${activeTab === 'shorten' ? 'active' : ''}`}
           onClick={() => setActiveTab('shorten')}
         >
-          <Link2 size={15} />
+          <Link2 size={14} />
           <span>Shorten</span>
         </button>
 
@@ -31,22 +31,38 @@ export default function Navbar({
           className={`nav-tab-btn ${activeTab === 'qr' ? 'active' : ''}`}
           onClick={() => setActiveTab('qr')}
         >
-          <QrCode size={15} />
-          <span>QR Studio</span>
+          <QrCode size={14} />
+          <span>QR Code</span>
         </button>
 
         <button
-          className={`nav-tab-btn ${activeTab === 'beam' ? 'active' : ''}`}
-          onClick={() => setActiveTab('beam')}
+          className={`nav-tab-btn ${activeTab === 'paste' ? 'active' : ''}`}
+          onClick={() => setActiveTab('paste')}
         >
-          <Radio size={15} />
-          <span>Device Beam</span>
+          <FileText size={14} />
+          <span>Paste & Docs</span>
+        </button>
+
+        <button
+          className={`nav-tab-btn ${activeTab === 'files' ? 'active' : ''}`}
+          onClick={() => setActiveTab('files')}
+        >
+          <Upload size={14} />
+          <span>Files</span>
+        </button>
+
+        <button
+          className={`nav-tab-btn ${activeTab === 'sharing' ? 'active' : ''}`}
+          onClick={() => setActiveTab('sharing')}
+        >
+          <Radio size={14} />
+          <span>Sharing</span>
           {transfersCount > 0 && (
             <span style={{
-              fontSize: '0.7rem',
+              fontSize: '0.68rem',
               background: 'var(--primary-accent)',
               color: '#ffffff',
-              padding: '1px 6px',
+              padding: '1px 5px',
               borderRadius: '9999px',
               marginLeft: '2px'
             }}>
@@ -56,17 +72,17 @@ export default function Navbar({
         </button>
 
         <button
-          className={`nav-tab-btn ${activeTab === 'vault' ? 'active' : ''}`}
-          onClick={() => setActiveTab('vault')}
+          className={`nav-tab-btn ${activeTab === 'history' ? 'active' : ''}`}
+          onClick={() => setActiveTab('history')}
         >
-          <HardDrive size={15} />
-          <span>Vault</span>
+          <Clock size={14} />
+          <span>History</span>
           {linksCount > 0 && (
             <span style={{
-              fontSize: '0.7rem',
+              fontSize: '0.68rem',
               background: 'var(--border-default)',
               color: 'var(--text-secondary)',
-              padding: '1px 6px',
+              padding: '1px 5px',
               borderRadius: '9999px',
               marginLeft: '2px'
             }}>
@@ -76,7 +92,7 @@ export default function Navbar({
         </button>
       </nav>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+      <div style={{ display: 'flex', alignItems: 'center' }}>
         <button
           className="icon-btn"
           onClick={toggleTheme}

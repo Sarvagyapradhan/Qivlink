@@ -99,3 +99,115 @@ export async function setStorageData(key, value) {
     return false;
   }
 }
+
+/**
+ * File Sharing Storage Helpers (Max 10MB)
+ */
+export const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB Supabase bucket limit
+
+export async function uploadFileToCloud(file) {
+  if (!file) throw new Error('No file provided');
+  if (file.size > MAX_FILE_SIZE) {
+    throw new Error('File exceeds the 10MB storage limit');
+  }
+
+  const timestamp = Date.now();
+  const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+  const storagePath = `uploads/${timestamp}_${safeName}`;
+
+  const { error } = await supabase.storage
+    .from(SUPABASE_CONFIG.bucketName)
+    .upload(storagePath, file, {
+      upsert: true,
+      contentType: file.type || 'application/octet-stream'
+    });
+
+  if (error) {
+    throw new Error(error.message || 'Failed to upload file to cloud storage');
+  }
+
+  const { data: urlData } = supabase.storage
+    .from(SUPABASE_CONFIG.bucketName)
+    .getPublicUrl(storagePath);
+
+  const fileItem = {
+    id: 'file_' + Math.random().toString(36).substring(2, 9) + '_' + timestamp,
+    name: file.name,
+    size: file.size,
+    type: file.type || 'unknown',
+    storagePath,
+    url: urlData.publicUrl,
+    createdAt: timestamp,
+    expiresAt: timestamp + SEVEN_DAYS_MS
+  };
+
+  const files = await getStorageData('files', []);
+  const updated = [fileItem, ...files];
+  await setStorageData('files', updated);
+
+  return fileItem;
+}
+
+export async function getActiveFiles() {
+  const files = await getStorageData('files', []);
+  return files.filter(f => !isExpired(f.createdAt));
+}
+
+export async function deleteFileFromCloud(fileId) {
+  const files = await getActiveFiles();
+  const target = files.find(f => f.id === fileId);
+  if (target && target.storagePath) {
+    supabase.storage.from(SUPABASE_CONFIG.bucketName).remove([target.storagePath]).catch(() => {});
+  }
+  const filtered = files.filter(f => f.id !== fileId);
+  await setStorageData('files', filtered);
+  return filtered;
+}
+
+/**
+ * Long-Form Paste / Docs Helpers (Markdown, Short URL, QR, PDF Export)
+ */
+export async function createPasteDoc({ title = '', content = '', format = 'markdown' }) {
+  if (!content || !content.trim()) {
+    throw new Error('Content cannot be empty');
+  }
+
+  const now = Date.now();
+  const code = Math.random().toString(36).substring(2, 8);
+  const pasteItem = {
+    id: 'p_' + code,
+    code,
+    title: (title || '').trim() || 'Untitled Note',
+    content: content.trim(),
+    format,
+    createdAt: now,
+    expiresAt: now + SEVEN_DAYS_MS
+  };
+
+  const pastes = await getStorageData('pastes', []);
+  const updated = [pasteItem, ...pastes];
+  await setStorageData('pastes', updated);
+  return pasteItem;
+}
+
+export async function getActivePastes() {
+  const pastes = await getStorageData('pastes', []);
+  return pastes.filter(p => !isExpired(p.createdAt));
+}
+
+export async function getPasteByIdOrCode(identifier) {
+  if (!identifier) return null;
+  const clean = identifier.trim().toLowerCase();
+  const pastes = await getActivePastes();
+  const found = pastes.find(p => p.id.toLowerCase() === clean || p.code.toLowerCase() === clean);
+  if (!found || isExpired(found.createdAt)) return null;
+  return found;
+}
+
+export async function deletePasteDoc(id) {
+  const pastes = await getActivePastes();
+  const filtered = pastes.filter(p => p.id !== id);
+  await setStorageData('pastes', filtered);
+  return filtered;
+}
+

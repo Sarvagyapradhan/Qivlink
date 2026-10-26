@@ -2,12 +2,17 @@ import React, { useState, useEffect } from 'react';
 import Navbar from './components/Navbar.jsx';
 import ShortenerSection from './components/ShortenerSection.jsx';
 import QRStudioSection from './components/QRStudioSection.jsx';
-import DeviceBeamSection from './components/DeviceBeamSection.jsx';
-import VaultSection from './components/VaultSection.jsx';
+import PasteDocSection from './components/PasteDocSection.jsx';
+import FileShareSection from './components/FileShareSection.jsx';
+import SharingSection from './components/SharingSection.jsx';
+import HistorySection from './components/HistorySection.jsx';
 import RedirectHandler from './components/RedirectHandler.jsx';
+import PasteViewer from './components/PasteViewer.jsx';
+
 import { getLocalDevice, registerDeviceInCloud } from './utils/deviceIdentity.js';
 import { getActiveLinks } from './utils/linkManager.js';
 import { getAllTransfers } from './utils/deviceTransferManager.js';
+import { getActivePastes, getActiveFiles } from './supabase.js';
 
 export default function App() {
   const [theme, setTheme] = useState(() => {
@@ -18,38 +23,47 @@ export default function App() {
     }
   });
 
-  const [activeTab, setActiveTab] = useState('shorten');
+  const [activeTab, setActiveTab] = useState('shorten'); // 'shorten' | 'qr' | 'paste' | 'files' | 'sharing' | 'history'
   const [localDevice, setLocalDevice] = useState(getLocalDevice);
   const [links, setLinks] = useState([]);
   const [transfers, setTransfers] = useState([]);
+  const [pastes, setPastes] = useState([]);
+  const [files, setFiles] = useState([]);
 
   const [qrPrefill, setQrPrefill] = useState('');
-  const [beamPrefill, setBeamPrefill] = useState({ content: '', title: '' });
+  const [sharingPrefill, setSharingPrefill] = useState({ content: '', title: '' });
   const [toasts, setToasts] = useState([]);
-  const [redirectCode, setRedirectCode] = useState(null);
 
-  const checkRedirectRoute = () => {
+  // Routing states
+  const [redirectCode, setRedirectCode] = useState(null);
+  const [pasteDocCode, setPasteDocCode] = useState(null);
+
+  const checkRoute = () => {
     const hash = window.location.hash || '';
     if (hash.startsWith('#/r/')) {
       const code = hash.replace('#/r/', '').trim();
       if (code) {
         setRedirectCode(code);
+        setPasteDocCode(null);
         return;
       }
     }
-    const params = new URLSearchParams(window.location.search);
-    const qCode = params.get('r');
-    if (qCode) {
-      setRedirectCode(qCode);
-      return;
+    if (hash.startsWith('#/p/')) {
+      const pCode = hash.replace('#/p/', '').trim();
+      if (pCode) {
+        setPasteDocCode(pCode);
+        setRedirectCode(null);
+        return;
+      }
     }
     setRedirectCode(null);
+    setPasteDocCode(null);
   };
 
   useEffect(() => {
-    checkRedirectRoute();
-    window.addEventListener('hashchange', checkRedirectRoute);
-    return () => window.removeEventListener('hashchange', checkRedirectRoute);
+    checkRoute();
+    window.addEventListener('hashchange', checkRoute);
+    return () => window.removeEventListener('hashchange', checkRoute);
   }, []);
 
   useEffect(() => {
@@ -73,13 +87,17 @@ export default function App() {
 
   const refreshAll = async () => {
     try {
-      const [fetchedLinks, fetchedTransfers] = await Promise.all([
+      const [fetchedLinks, fetchedTransfers, fetchedPastes, fetchedFiles] = await Promise.all([
         getActiveLinks(),
         getAllTransfers(),
+        getActivePastes(),
+        getActiveFiles(),
         registerDeviceInCloud(localDevice)
       ]);
       setLinks(fetchedLinks);
       setTransfers(fetchedTransfers);
+      setPastes(fetchedPastes);
+      setFiles(fetchedFiles);
     } catch (err) {
       console.warn('Sync notice:', err);
     }
@@ -87,7 +105,7 @@ export default function App() {
 
   useEffect(() => {
     refreshAll();
-    const interval = setInterval(refreshAll, 12000);
+    const interval = setInterval(refreshAll, 14000);
     return () => clearInterval(interval);
   }, [localDevice]);
 
@@ -96,15 +114,16 @@ export default function App() {
     setActiveTab('qr');
   };
 
-  const handleSelectForBeam = (content, title = '') => {
-    setBeamPrefill({ content, title });
-    setActiveTab('beam');
+  const handleSelectForSharing = (content, title = '') => {
+    setSharingPrefill({ content, title });
+    setActiveTab('sharing');
   };
 
   const handleLinkCreated = (newLink) => {
     setLinks(prev => [newLink, ...prev.filter(l => l.id !== newLink.id)]);
   };
 
+  // Route 1: Short link redirect
   if (redirectCode) {
     return (
       <div className="app-viewport">
@@ -119,19 +138,32 @@ export default function App() {
     );
   }
 
+  // Route 2: Long-form paste viewer
+  if (pasteDocCode) {
+    return (
+      <div className="app-viewport">
+        <PasteViewer
+          code={pasteDocCode}
+          onBackToApp={() => {
+            window.location.hash = '';
+            setPasteDocCode(null);
+          }}
+        />
+      </div>
+    );
+  }
+
   const incomingCount = transfers.filter(
     t => t.targetToken && t.targetToken.toUpperCase() === localDevice.token.toUpperCase()
   ).length;
 
   return (
     <div className="app-viewport">
-      {/* Subtle Ambient Background */}
       <div className="gradient-ambient-container" aria-hidden="true">
         <div className="gradient-orb orb-1" />
         <div className="gradient-orb orb-2" />
       </div>
 
-      {/* Navigation */}
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -141,14 +173,13 @@ export default function App() {
         transfersCount={incomingCount}
       />
 
-      {/* Content */}
       <main className="site-container" style={{ paddingBottom: '36px', flex: 1 }}>
         {activeTab === 'shorten' && (
           <ShortenerSection
             deviceToken={localDevice.token}
             onLinkCreated={handleLinkCreated}
             onSelectForQr={handleSelectForQr}
-            onSelectForBeam={handleSelectForBeam}
+            onSelectForBeam={handleSelectForSharing}
             showToast={showToast}
           />
         )}
@@ -160,30 +191,44 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'beam' && (
-          <DeviceBeamSection
+        {activeTab === 'paste' && (
+          <PasteDocSection
+            showToast={showToast}
+            onSelectForQr={handleSelectForQr}
+          />
+        )}
+
+        {activeTab === 'files' && (
+          <FileShareSection
+            showToast={showToast}
+            onSelectForQr={handleSelectForQr}
+          />
+        )}
+
+        {activeTab === 'sharing' && (
+          <SharingSection
             localDevice={localDevice}
             onDeviceUpdated={setLocalDevice}
-            initialContent={beamPrefill.content}
-            initialTitle={beamPrefill.title}
+            initialContent={sharingPrefill.content}
+            initialTitle={sharingPrefill.title}
             showToast={showToast}
           />
         )}
 
-        {activeTab === 'vault' && (
-          <VaultSection
+        {activeTab === 'history' && (
+          <HistorySection
             links={links}
+            pastes={pastes}
+            files={files}
             onLinkDeleted={(updated) => setLinks(updated)}
             onRefresh={refreshAll}
             onSelectForQr={handleSelectForQr}
-            onSelectForBeam={handleSelectForBeam}
             currentDeviceToken={localDevice.token}
             showToast={showToast}
           />
         )}
       </main>
 
-      {/* Toast Notifications */}
       <div className="toast-container">
         {toasts.map(toast => (
           <div key={toast.id} className="toast-item">
@@ -192,15 +237,14 @@ export default function App() {
         ))}
       </div>
 
-      {/* Footer */}
       <footer className="site-container app-footer">
         <div>
-          <strong>Qivlink</strong> — Privacy URL Shortener & Offline QR Studio
+          <strong>Qivlink</strong> — Fast, privacy-focused link shortening, offline QR, and content sharing
         </div>
         <div style={{ display: 'flex', gap: '14px', alignItems: 'center' }}>
           <span>7-Day Rolling Retention</span>
           <span>•</span>
-          <span>Zero Telemetry</span>
+          <span>Zero Tracking</span>
         </div>
       </footer>
     </div>

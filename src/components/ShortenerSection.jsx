@@ -208,17 +208,17 @@ export default function ShortenerSection({
                   title="Generate Offline QR"
                 >
                   <QrCode size={14} />
-                  <span>QR Studio</span>
+                  <span>QR Code</span>
                 </button>
 
                 <button
                   type="button"
                   className="btn btn-secondary btn-sm"
                   onClick={() => onSelectForBeam && onSelectForBeam(shortUrl, lastCreated.title)}
-                  title="Beam link to another paired device"
+                  title="Share link to another device"
                 >
                   <Radio size={14} />
-                  <span>Beam</span>
+                  <span>Share</span>
                 </button>
 
                 <a
