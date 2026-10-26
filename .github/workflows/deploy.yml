@@ -1,0 +1,56 @@
+name: CD Deploy to Vercel (Main Branch)
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    name: Build & Deploy to Vercel Production
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Build Verification
+        run: npm run build
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_SUPABASE_SERVICE_KEY: ${{ secrets.VITE_SUPABASE_SERVICE_KEY }}
+
+      - name: Deploy to Vercel Action
+        uses: amondnet/vercel-action@v25
+        if: env.VERCEL_TOKEN != ''
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          vercel-args: '--prod'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
+      - name: Deployment Notice if Secrets Missing
+        if: env.VERCEL_TOKEN == ''
+        run: |
+          echo "=================================================================="
+          echo "VERCEL_TOKEN secret is not yet configured in GitHub Repository."
+          echo "Build succeeded with 0 errors!"
+          echo "To enable direct GitHub Actions auto-deployment to Vercel:"
+          echo "1. Go to repository Settings -> Secrets and variables -> Actions"
+          echo "2. Add VERCEL_TOKEN, VERCEL_ORG_ID, and VERCEL_PROJECT_ID"
+          echo "Or connect this repository directly in the Vercel Dashboard for instant zero-config deployments."
+          echo "=================================================================="
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
