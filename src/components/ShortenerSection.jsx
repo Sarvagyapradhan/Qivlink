@@ -47,7 +47,8 @@ export default function ShortenerSection({
         customAlias,
         title,
         stripTracking,
-        deviceToken
+        deviceToken,
+        currentUser
       });
 
       setLastCreated(newLink);

@@ -76,47 +76,70 @@ export function generateShortCode(length = 6) {
  * Fetch all active links, merging local device cache with Supabase cloud storage.
  * Local links are prioritized so guest shortened links are NEVER lost or overwritten.
  */
-export async function getActiveLinks(deviceToken = null) {
-  // 1. Read persistent local links from browser storage
+export async function getActiveLinks(deviceToken = null, currentUser = null) {
   const localLinks = getLocalLinks();
+
+  const tokenClean = (deviceToken || '').trim().toLowerCase();
+  const userId = currentUser?.id;
+  const userEmail = (currentUser?.email || '').trim().toLowerCase();
+
+  // Purge any foreign links that might have leaked into local storage in previous versions
+  const myLocalLinks = (localLinks || []).filter(item => {
+    if (!item || !item.shortCode || isExpired(item.createdAt)) return false;
+    const dev = (item.creatorDevice || '').trim().toLowerCase();
+    const uId = item.creatorUser;
+    const uEmail = (item.creatorEmail || '').trim().toLowerCase();
+
+    if (tokenClean && dev && dev === tokenClean) return true;
+    if (userId && uId && uId === userId) return true;
+    if (userEmail && uEmail && uEmail === userEmail) return true;
+    return false;
+  });
+
+  if (myLocalLinks.length !== (localLinks || []).length) {
+    saveAllLocalLinks(myLocalLinks);
+  }
 
   // 2. Fetch cloud links from Supabase
   let cloudLinks = [];
   try {
     cloudLinks = await getStorageData('links', []);
-  } catch (err) {
-    console.warn('[LinkManager] Cloud fetch notice:', err);
+  } catch (err) {}
+
+  // If caller is doing a global lookup for redirect routing (no deviceToken and no currentUser)
+  if (!deviceToken && !currentUser) {
+    const linkMap = new Map();
+    (cloudLinks || []).forEach(item => {
+      if (item && item.shortCode && !isExpired(item.createdAt)) {
+        linkMap.set(item.shortCode.toLowerCase(), item);
+      }
+    });
+    myLocalLinks.forEach(item => {
+      if (item && item.shortCode && !isExpired(item.createdAt)) {
+        linkMap.set(item.shortCode.toLowerCase(), item);
+      }
+    });
+    return Array.from(linkMap.values());
   }
 
-  // 3. Merge: Start with local items, union with cloud items without duplicating
-  const linkMap = new Map();
-  // Put cloud items first
-  (cloudLinks || []).forEach(item => {
-    if (item && item.shortCode && !isExpired(item.createdAt)) {
-      linkMap.set(item.shortCode.toLowerCase(), item);
-    }
-  });
-  // Put local items (overriding/complementing cloud items)
-  (localLinks || []).forEach(item => {
-    if (item && item.shortCode && !isExpired(item.createdAt)) {
-      linkMap.set(item.shortCode.toLowerCase(), item);
-    }
+  // Filter cloud links strictly for this device or signed-in user
+  const myCloudLinks = (cloudLinks || []).filter(item => {
+    if (!item || !item.shortCode || isExpired(item.createdAt)) return false;
+    const dev = (item.creatorDevice || '').trim().toLowerCase();
+    const uId = item.creatorUser;
+    const uEmail = (item.creatorEmail || '').trim().toLowerCase();
+
+    const matchDevice = Boolean(tokenClean && dev && dev === tokenClean);
+    const matchUser = Boolean((userId && uId && uId === userId) || (userEmail && uEmail && uEmail === userEmail));
+    return matchDevice || matchUser;
   });
 
-  const mergedLinks = Array.from(linkMap.values());
+  // Merge only this user's local and cloud items (NEVER saving foreign links to localStorage)
+  const resultMap = new Map();
+  myCloudLinks.forEach(l => resultMap.set(l.id, l));
+  myLocalLinks.forEach(l => resultMap.set(l.id, l));
 
-  // 4. Save the merged active list back to local storage
-  saveAllLocalLinks(mergedLinks);
-
-  // 5. If deviceToken is specified, return items created by this device OR present locally
-  if (!deviceToken) return mergedLinks;
-
-  // Local device links should ALWAYS be visible to this guest
-  const localIds = new Set(localLinks.map(l => l.id));
-  return mergedLinks.filter(l => 
-    localIds.has(l.id) || 
-    (l.creatorDevice && l.creatorDevice.toLowerCase() === deviceToken.toLowerCase())
-  );
+  return Array.from(resultMap.values());
 }
 
 /**
@@ -128,7 +151,8 @@ export async function createShortLink({
   customAlias = '',
   title = '',
   stripTracking = true,
-  deviceToken = ''
+  deviceToken = '',
+  currentUser = null
 }) {
   const cleanUrl = sanitizeUrl(url, stripTracking);
   let code = (customAlias || '').trim().toLowerCase().replace(/[^a-z0-9-_]/g, '');
@@ -164,6 +188,8 @@ export async function createShortLink({
     title: linkTitle,
     stripTracking,
     creatorDevice: (deviceToken || '').trim().slice(0, 32),
+    creatorUser: currentUser?.id || null,
+    creatorEmail: currentUser?.email || null,
     createdAt: now,
     expiresAt: now + SEVEN_DAYS_MS,
     clicks: 0

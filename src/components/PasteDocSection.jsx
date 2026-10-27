@@ -67,7 +67,8 @@ export default function PasteDocSection({
         title,
         content,
         format: 'markdown',
-        deviceToken
+        deviceToken,
+        currentUser
       });
       setSavedDoc(doc);
       await consumeToolUsage('paste', currentUser);

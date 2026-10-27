@@ -8,13 +8,11 @@ import {
   ArrowRight, 
   Sparkles, 
   CheckCircle2, 
-  AlertCircle, 
-  Settings, 
-  ShieldCheck, 
-  KeyRound,
-  ExternalLink 
+  AlertCircle 
 } from 'lucide-react';
 import { authSignUpWithAutoConfirm, authSignInWithAutoConfirm } from '../supabase.js';
+
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
 
 export default function AuthModal({ isOpen, onClose, onAuthSuccess, initialMode = 'signin' }) {
   const [mode, setMode] = useState(initialMode); // 'signin' | 'signup'
@@ -25,105 +23,64 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, initialMode 
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
-  // Direct Google OAuth configuration state
-  const [showGoogleConfig, setShowGoogleConfig] = useState(false);
-  const [customClientId, setCustomClientId] = useState(() => {
-    try {
-      return localStorage.getItem('qvlink_google_client_id') || import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
-    } catch (e) {
-      return '';
-    }
-  });
-  const [customClientSecret, setCustomClientSecret] = useState(() => {
-    try {
-      return localStorage.getItem('qvlink_google_client_secret') || '';
-    } catch (e) {
-      return '';
-    }
-  });
-
   useEffect(() => {
     if (isOpen) {
       setErrorMsg('');
       setSuccessMsg('');
       setLoading(false);
-      setShowGoogleConfig(false);
     }
   }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const getEffectiveClientId = () => {
-    return (customClientId || import.meta.env.VITE_GOOGLE_CLIENT_ID || '').trim();
-  };
-
-  const getEffectiveClientSecret = () => {
-    return (customClientSecret || '').trim();
-  };
-
-  // Direct token exchange with /api/auth/google backend
+  // Secure token exchange with /api/auth/google
   const exchangeGoogleCode = async (code, redirectUri) => {
     setLoading(true);
     setErrorMsg('');
     try {
-      const clientId = getEffectiveClientId();
-      const clientSecret = getEffectiveClientSecret();
-
       const res = await fetch('/api/auth/google', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           code,
-          redirect_uri: redirectUri || 'postmessage',
-          client_id: clientId || undefined,
-          client_secret: clientSecret || undefined
+          redirect_uri: redirectUri || 'postmessage'
         })
       });
 
       const data = await res.json();
       if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Direct Google authentication failed');
+        throw new Error(data.error || 'Google sign-in failed.');
       }
 
-      // Persist authenticated user session directly in local device storage
       localStorage.setItem('qvlink_auth_user', JSON.stringify(data.user));
-      setSuccessMsg(`Welcome, ${data.user.email}! Direct Google sign-in verified.`);
+      setSuccessMsg('Signed in successfully.');
       
       if (onAuthSuccess) {
         onAuthSuccess(data.user);
       }
-      setTimeout(() => onClose(), 1100);
+      setTimeout(() => onClose(), 1000);
     } catch (err) {
-      setErrorMsg(err.message || 'Direct Google authentication failed. Please check credentials.');
+      setErrorMsg(err.message || 'Google sign-in failed. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  // Direct Google OAuth: Completely bypasses Supabase mediator
+  // Google OAuth flow: Connects directly with Google
   const handleGoogleAuth = () => {
     setErrorMsg('');
-    const clientId = getEffectiveClientId();
-
-    if (!clientId) {
-      setShowGoogleConfig(true);
-      setErrorMsg('Please configure your Google OAuth Client ID below to connect directly.');
-      return;
-    }
-
     setLoading(true);
 
-    // Flow A: Google Identity Services popup code client
     if (window.google?.accounts?.oauth2) {
       try {
         const client = window.google.accounts.oauth2.initCodeClient({
-          client_id: clientId,
+          client_id: GOOGLE_CLIENT_ID,
           scope: 'openid email profile',
           ux_mode: 'popup',
           callback: async (response) => {
             if (response.error) {
               setLoading(false);
-              setErrorMsg(`Google authorization error: ${response.error_description || response.error}`);
+              setErrorMsg(response.error_description || 'Google sign-in was cancelled or failed.');
               return;
             }
             if (response.code) {
@@ -132,27 +89,25 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, initialMode 
               setLoading(false);
             }
           },
-          error_callback: (err) => {
-            console.warn('GIS error, falling back to direct redirect:', err);
-            triggerDirectRedirect(clientId);
+          error_callback: () => {
+            triggerDirectRedirect();
           }
         });
         client.requestCode();
         return;
-      } catch (gisErr) {
-        console.warn('GIS initCodeClient failed, falling back to direct redirect:', gisErr);
+      } catch (e) {
+        // Fall back to direct redirect
       }
     }
 
-    // Flow B: Direct OAuth 2.0 redirect straight to Google
-    triggerDirectRedirect(clientId);
+    triggerDirectRedirect();
   };
 
-  const triggerDirectRedirect = (clientId) => {
+  const triggerDirectRedirect = () => {
     try {
       const redirectUri = window.location.origin;
       const params = new URLSearchParams({
-        client_id: clientId,
+        client_id: GOOGLE_CLIENT_ID,
         redirect_uri: redirectUri,
         response_type: 'code',
         scope: 'openid email profile',
@@ -162,36 +117,11 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, initialMode 
       window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
     } catch (err) {
       setLoading(false);
-      setErrorMsg(`Failed to launch Google authentication: ${err.message}`);
+      setErrorMsg('Could not open Google sign-in.');
     }
   };
 
-  const handleSaveGoogleConfig = (e) => {
-    e.preventDefault();
-    try {
-      const cleanId = customClientId.trim();
-      const cleanSecret = customClientSecret.trim();
-      
-      if (!cleanId) {
-        setErrorMsg('Please enter a valid Google Client ID.');
-        return;
-      }
-
-      localStorage.setItem('qvlink_google_client_id', cleanId);
-      if (cleanSecret) {
-        localStorage.setItem('qvlink_google_client_secret', cleanSecret);
-      }
-
-      setShowGoogleConfig(false);
-      setErrorMsg('');
-      setSuccessMsg('Google OAuth configuration saved! Initiating direct sign-in...');
-      setTimeout(() => handleGoogleAuth(), 400);
-    } catch (err) {
-      setErrorMsg('Failed to save configuration: ' + err.message);
-    }
-  };
-
-  // Standard Email Authentication with auto-confirm
+  // Email authentication
   const handleEmailAuth = async (e) => {
     e.preventDefault();
     setErrorMsg('');
@@ -207,17 +137,17 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, initialMode 
 
         if (result.session) {
           localStorage.setItem('qvlink_auth_user', JSON.stringify(result.user));
-          setSuccessMsg('Account created & verified! Unlimited plan active.');
+          setSuccessMsg('Account created successfully.');
           if (onAuthSuccess) onAuthSuccess(result.user);
-          setTimeout(() => onClose(), 1200);
+          setTimeout(() => onClose(), 1100);
         } else if (result.requiresEmailCheck) {
-          setSuccessMsg('Account registered! If confirmation is required, please check your inbox or sign in below.');
+          setSuccessMsg('Account registered! Please sign in with your credentials.');
           setMode('signin');
         } else {
           localStorage.setItem('qvlink_auth_user', JSON.stringify(result.user));
-          setSuccessMsg('Welcome to Qvlink! Unlimited plan active.');
+          setSuccessMsg('Welcome to Qvlink.');
           if (onAuthSuccess) onAuthSuccess(result.user);
-          setTimeout(() => onClose(), 1200);
+          setTimeout(() => onClose(), 1100);
         }
       } else {
         const result = await authSignInWithAutoConfirm({
@@ -225,17 +155,17 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, initialMode 
           password
         });
         localStorage.setItem('qvlink_auth_user', JSON.stringify(result.user));
-        setSuccessMsg('Signed in successfully! Unlimited access active.');
+        setSuccessMsg('Signed in successfully.');
         if (onAuthSuccess) onAuthSuccess(result.user);
-        setTimeout(() => onClose(), 1000);
+        setTimeout(() => onClose(), 900);
       }
     } catch (err) {
       const msg = err.message || '';
       if (msg.toLowerCase().includes('already registered')) {
-        setErrorMsg('This email is already registered. Please enter your password to Sign In.');
+        setErrorMsg('This email is already registered. Please sign in below.');
         setMode('signin');
       } else {
-        setErrorMsg(msg || 'Authentication failed. Please verify your credentials.');
+        setErrorMsg(msg || 'Authentication failed. Please check your credentials.');
       }
     } finally {
       setLoading(false);
@@ -252,10 +182,10 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, initialMode 
             </div>
             <div>
               <h2 style={{ fontSize: '1.15rem', fontWeight: 700, margin: 0 }}>
-                {mode === 'signup' ? 'Create Qvlink Account' : 'Welcome to Qvlink'}
+                {mode === 'signup' ? 'Create Account' : 'Welcome Back'}
               </h2>
               <p style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', margin: '2px 0 0' }}>
-                {mode === 'signup' ? 'Unlock unlimited usage & developer API keys' : 'Sign in to access unlimited features'}
+                {mode === 'signup' ? 'Unlock unlimited usage and API access' : 'Sign in to access your account'}
               </p>
             </div>
           </div>
@@ -297,102 +227,24 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, initialMode 
           </div>
         )}
 
-        {/* Direct Google OAuth Section */}
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <button
-            type="button"
-            className="google-auth-btn"
-            onClick={handleGoogleAuth}
-            disabled={loading}
-            style={{ flex: 1 }}
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24">
-              <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-              <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-              <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
-              <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
-            </svg>
-            <span>{loading ? 'Connecting directly...' : 'Continue with Google (Direct)'}</span>
-          </button>
-
-          <button
-            type="button"
-            className="icon-btn"
-            onClick={() => setShowGoogleConfig(!showGoogleConfig)}
-            title="Configure Direct Google OAuth Client ID & Secret"
-            style={{ 
-              width: '42px', 
-              height: '42px', 
-              border: '1.5px solid var(--border-default)', 
-              borderRadius: 'var(--radius-md)',
-              background: showGoogleConfig ? 'var(--accent-soft)' : 'var(--bg-surface)'
-            }}
-          >
-            <Settings size={17} color={showGoogleConfig ? 'var(--primary-accent)' : 'var(--text-tertiary)'} />
-          </button>
-        </div>
-
-        {/* Direct Google Configuration Accordion */}
-        {showGoogleConfig && (
-          <form onSubmit={handleSaveGoogleConfig} style={{
-            marginTop: '12px',
-            padding: '14px',
-            background: 'var(--bg-subtle)',
-            borderRadius: 'var(--radius-md)',
-            border: '1px solid var(--border-default)',
-            fontSize: '0.82rem'
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px', color: 'var(--text-primary)', fontWeight: 600 }}>
-              <ShieldCheck size={16} color="var(--primary-accent)" />
-              <span>Direct Google OAuth Credentials</span>
-            </div>
-            <p style={{ margin: '0 0 10px', color: 'var(--text-tertiary)', fontSize: '0.76rem', lineHeight: 1.4 }}>
-              Zero intermediary. Google's prompt shows <strong>qvlink.vercel.app</strong> (or localhost) directly.
-            </p>
-
-            <div className="form-group" style={{ marginBottom: '10px' }}>
-              <label className="form-label" style={{ fontSize: '0.74rem' }}>Google Client ID</label>
-              <div className="input-wrapper">
-                <KeyRound size={14} className="input-icon-left" />
-                <input
-                  type="text"
-                  className="input-text"
-                  style={{ fontSize: '0.8rem', padding: '8px 10px 8px 30px' }}
-                  placeholder="xxxx.apps.googleusercontent.com"
-                  value={customClientId}
-                  onChange={(e) => setCustomClientId(e.target.value)}
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="form-group" style={{ marginBottom: '12px' }}>
-              <label className="form-label" style={{ fontSize: '0.74rem' }}>Google Client Secret (Optional for direct exchange)</label>
-              <div className="input-wrapper">
-                <Lock size={14} className="input-icon-left" />
-                <input
-                  type="password"
-                  className="input-text"
-                  style={{ fontSize: '0.8rem', padding: '8px 10px 8px 30px' }}
-                  placeholder="GOCSPX-..."
-                  value={customClientSecret}
-                  onChange={(e) => setCustomClientSecret(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              className="btn btn-primary btn-sm"
-              style={{ width: '100%', justifyContent: 'center' }}
-            >
-              <span>Save & Sign In Directly</span>
-            </button>
-          </form>
-        )}
+        {/* Google Sign In Button */}
+        <button
+          type="button"
+          className="google-auth-btn"
+          onClick={handleGoogleAuth}
+          disabled={loading}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24">
+            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+          </svg>
+          <span>{loading ? 'Signing in with Google...' : 'Continue with Google'}</span>
+        </button>
 
         <div className="auth-divider">
-          <span>or continue with email</span>
+          <span>or with email</span>
         </div>
 
         {/* Email & Password Form */}
@@ -444,7 +296,7 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, initialMode 
             style={{ width: '100%', justifyContent: 'center' }}
             disabled={loading}
           >
-            <span>{loading ? 'Please wait...' : mode === 'signup' ? 'Create Unlimited Account' : 'Sign In'}</span>
+            <span>{loading ? 'Please wait...' : mode === 'signup' ? 'Create Account' : 'Sign In'}</span>
             <ArrowRight size={16} />
           </button>
         </form>
@@ -463,13 +315,13 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, initialMode 
             </span>
           ) : (
             <span>
-              New to Qvlink?{' '}
+              Don't have an account?{' '}
               <button
                 type="button"
                 className="text-link"
                 onClick={() => { setMode('signup'); setErrorMsg(''); }}
               >
-                Create Account (Free)
+                Sign Up
               </button>
             </span>
           )}

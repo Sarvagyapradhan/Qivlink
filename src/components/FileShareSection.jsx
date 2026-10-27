@@ -55,7 +55,7 @@ export default function FileShareSection({ deviceToken = '', currentUser = null,
 
     setIsUploading(true);
     try {
-      const uploaded = await uploadFileToCloud(file, deviceToken);
+      const uploaded = await uploadFileToCloud(file, deviceToken, currentUser);
       await consumeToolUsage('files', currentUser);
       showToast(`Uploaded ${file.name} successfully`, 'success');
       setFiles(prev => [uploaded, ...prev]);

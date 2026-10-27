@@ -9,6 +9,7 @@ export default function HistorySection({
   links = [],
   pastes = [],
   files = [],
+  currentUser = null,
   onLinkDeleted,
   onPasteDeleted,
   onFileDeleted,
@@ -23,11 +24,26 @@ export default function HistorySection({
 
   const currentHost = window.location.origin;
 
-  // Strict device isolation with case-insensitive matching
+  // Strict device and user isolation: never leak foreign items or items without ownership
   const tokenClean = (currentDeviceToken || '').trim().toLowerCase();
-  const myLinks = links.filter(l => !tokenClean || !l.creatorDevice || l.creatorDevice.toLowerCase() === tokenClean);
-  const myPastes = pastes.filter(p => !tokenClean || !p.creatorDevice || p.creatorDevice.toLowerCase() === tokenClean);
-  const myFiles = files.filter(f => !tokenClean || !f.creatorDevice || f.creatorDevice.toLowerCase() === tokenClean);
+  const userId = currentUser?.id;
+  const userEmail = (currentUser?.email || '').trim().toLowerCase();
+
+  const isMyItem = (item) => {
+    if (!item) return false;
+    const dev = (item.creatorDevice || '').trim().toLowerCase();
+    const uId = item.creatorUser;
+    const uEmail = (item.creatorEmail || '').trim().toLowerCase();
+
+    if (tokenClean && dev && dev === tokenClean) return true;
+    if (userId && uId && uId === userId) return true;
+    if (userEmail && uEmail && uEmail === userEmail) return true;
+    return false;
+  };
+
+  const myLinks = links.filter(isMyItem);
+  const myPastes = pastes.filter(isMyItem);
+  const myFiles = files.filter(isMyItem);
 
   const filteredLinks = myLinks.filter((link) => {
     if (!searchTerm.trim()) return true;

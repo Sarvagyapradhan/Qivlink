@@ -71,9 +71,7 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           code: authCode,
-          redirect_uri: window.location.origin,
-          client_id: clientId || undefined,
-          client_secret: clientSecret || undefined
+          redirect_uri: window.location.origin
         })
       })
       .then(res => res.json())
@@ -81,15 +79,15 @@ export default function App() {
         if (data.success && data.user) {
           localStorage.setItem('qvlink_auth_user', JSON.stringify(data.user));
           setUser(data.user);
-          showToast(`Welcome, ${data.user.email}! Direct Google sign-in active.`, 'success');
+          showToast(`Welcome back, ${data.user.email}!`, 'success');
           const cleanUrl = window.location.origin + window.location.pathname + window.location.hash;
           window.history.replaceState(null, '', cleanUrl);
         } else if (data.error) {
-          showToast(`Google authentication error: ${data.error}`, 'danger');
+          showToast(data.error || 'Google sign-in failed.', 'danger');
         }
       })
       .catch(err => {
-        showToast(`Google sign-in error: ${err.message}`, 'danger');
+        showToast('Google sign-in failed. Please try again.', 'danger');
       });
     }
   }, []);
@@ -169,10 +167,10 @@ export default function App() {
   const refreshAll = async () => {
     try {
       const [fetchedLinks, fetchedTransfers, fetchedPastes, fetchedFiles] = await Promise.all([
-        getActiveLinks(localDevice.token),
+        getActiveLinks(localDevice.token, user),
         getAllTransfers(),
-        getActivePastes(localDevice.token),
-        getActiveFiles(localDevice.token),
+        getActivePastes(localDevice.token, user),
+        getActiveFiles(localDevice.token, user),
         registerDeviceInCloud(localDevice)
       ]);
       setLinks(fetchedLinks);
@@ -188,7 +186,7 @@ export default function App() {
     refreshAll();
     const interval = setInterval(refreshAll, 14000);
     return () => clearInterval(interval);
-  }, [localDevice]);
+  }, [localDevice, user]);
 
   const handleSelectForQr = (url) => {
     setQrPrefill(url);
@@ -349,6 +347,7 @@ export default function App() {
             links={links}
             pastes={pastes}
             files={files}
+            currentUser={user}
             onLinkDeleted={(id) => setLinks(prev => prev.filter(l => l.id !== id))}
             onPasteDeleted={(id) => setPastes(prev => prev.filter(p => p.id !== id))}
             onFileDeleted={(id) => setFiles(prev => prev.filter(f => f.id !== id))}

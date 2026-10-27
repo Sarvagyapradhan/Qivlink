@@ -23,37 +23,30 @@ export default defineConfig(({ mode }) => {
             req.on('data', chunk => { body += chunk; });
             req.on('end', async () => {
               try {
-                const { code, credential, redirect_uri, client_id, client_secret } = JSON.parse(body || '{}');
+                const { code, credential, redirect_uri } = JSON.parse(body || '{}');
                 const supabaseUrl = env.VITE_SUPABASE_URL || 'https://wjjvobqwnnlzxsovjovx.supabase.co';
                 const serviceKey = env.VITE_SUPABASE_SERVICE_KEY || env.SUPABASE_SERVICE_KEY;
-                const googleClientId = client_id || env.VITE_GOOGLE_CLIENT_ID || env.GOOGLE_CLIENT_ID;
-                const googleClientSecret = client_secret || env.GOOGLE_CLIENT_SECRET || env.VITE_GOOGLE_CLIENT_SECRET;
+                const googleClientId = env.VITE_GOOGLE_CLIENT_ID || env.GOOGLE_CLIENT_ID;
+                const googleClientSecret = env.GOOGLE_CLIENT_SECRET || env.VITE_GOOGLE_CLIENT_SECRET;
 
                 let googleProfile = null;
 
-                if (credential) {
-                  const parts = credential.split('.');
-                  if (parts.length === 3) {
-                    const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
-                    if (payload.email) {
+                if (credential && typeof credential === 'string') {
+                  const verifyRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`);
+                  if (verifyRes.ok) {
+                    const tokenInfo = await verifyRes.json();
+                    if (tokenInfo.aud === googleClientId && tokenInfo.email) {
                       googleProfile = {
-                        email: payload.email.toLowerCase(),
-                        name: payload.name || payload.email.split('@')[0],
-                        picture: payload.picture || '',
-                        sub: payload.sub
+                        email: tokenInfo.email.toLowerCase(),
+                        name: tokenInfo.name || tokenInfo.email.split('@')[0],
+                        picture: tokenInfo.picture || '',
+                        sub: tokenInfo.sub
                       };
                     }
                   }
                 }
 
                 if (!googleProfile && code) {
-                  if (!googleClientId || !googleClientSecret) {
-                    res.statusCode = 400;
-                    res.setHeader('Content-Type', 'application/json');
-                    res.end(JSON.stringify({ error: 'Google Client ID or Client Secret not configured. Please enter them in settings or add VITE_GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to .env.local.' }));
-                    return;
-                  }
-
                   const exchangeRedirectUri = redirect_uri || 'postmessage';
 
                   const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
@@ -70,14 +63,35 @@ export default defineConfig(({ mode }) => {
 
                   const tokenData = await tokenRes.json();
                   if (tokenData.id_token) {
-                    const parts = tokenData.id_token.split('.');
-                    const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
-                    googleProfile = {
-                      email: payload.email.toLowerCase(),
-                      name: payload.name || payload.email.split('@')[0],
-                      picture: payload.picture || '',
-                      sub: payload.sub
-                    };
+                    const verifyRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(tokenData.id_token)}`);
+                    if (verifyRes.ok) {
+                      const tokenInfo = await verifyRes.json();
+                      if (tokenInfo.aud === googleClientId && tokenInfo.email) {
+                        googleProfile = {
+                          email: tokenInfo.email.toLowerCase(),
+                          name: tokenInfo.name || tokenInfo.email.split('@')[0],
+                          picture: tokenInfo.picture || '',
+                          sub: tokenInfo.sub
+                        };
+                      }
+                    }
+                  }
+
+                  if (!googleProfile && tokenData.access_token) {
+                    const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                      headers: { Authorization: `Bearer ${tokenData.access_token}` }
+                    });
+                    if (userInfoRes.ok) {
+                      const info = await userInfoRes.json();
+                      if (info.email) {
+                        googleProfile = {
+                          email: info.email.toLowerCase(),
+                          name: info.name || info.email.split('@')[0],
+                          picture: info.picture || '',
+                          sub: info.sub
+                        };
+                      }
+                    }
                   }
                 }
 
