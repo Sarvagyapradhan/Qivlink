@@ -1,5 +1,19 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Link2, QrCode, FileText, Upload, Radio, Clock, Sun, Moon, User, Key, LogOut, Sparkles, ChevronDown } from 'lucide-react';
+import { 
+  Link2, 
+  QrCode, 
+  FileText, 
+  FolderUp, 
+  Share2, 
+  History, 
+  Sun, 
+  Moon, 
+  User, 
+  Key, 
+  LogOut, 
+  Sparkles, 
+  ChevronDown 
+} from 'lucide-react';
 
 export default function Navbar({
   activeTab,
@@ -30,17 +44,37 @@ export default function Navbar({
   const shortEmail = user?.email ? (user.email.length > 18 ? user.email.slice(0, 16) + '...' : user.email) : '';
 
   return (
-    <header className="app-navbar">
-      <div className="navbar-top-row">
-        <div className="brand-wrapper" onClick={() => setActiveTab('shorten')} style={{ cursor: 'pointer' }}>
+    <header className="app-navbar-container">
+      {/* Top Header Row: Brand at Far Left, Auth & Theme at FAR RIGHT CORNER */}
+      <div className="navbar-top-bar">
+        <div 
+          className="brand-wrapper" 
+          onClick={() => setActiveTab('shorten')} 
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => { if (e.key === 'Enter') setActiveTab('shorten'); }}
+          title="Qvlink Home"
+        >
           <div className="brand-icon-box">
-            <Link2 size={18} strokeWidth={2.5} />
+            <Link2 size={18} strokeWidth={2.4} />
           </div>
           <span className="brand-text">Qvlink</span>
         </div>
 
+        {/* Far Right Corner: Theme Toggle & Sign In / User Profile */}
         <div className="navbar-actions-group">
-          {/* User Auth / Account */}
+          {/* Theme Toggle */}
+          <button
+            type="button"
+            className="icon-btn theme-toggle-btn"
+            onClick={toggleTheme}
+            title={theme === 'dark' ? 'Switch to Light Theme' : 'Switch to Dark Theme'}
+            aria-label="Toggle Theme"
+          >
+            {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
+          </button>
+
+          {/* User Auth or Sign In/Sign Up */}
           {user ? (
             <div className="user-dropdown-container" ref={dropdownRef}>
               <button
@@ -48,6 +82,7 @@ export default function Navbar({
                 className="user-pill-btn"
                 onClick={() => setDropdownOpen(!dropdownOpen)}
                 aria-expanded={dropdownOpen}
+                aria-haspopup="true"
               >
                 <div className="user-avatar-circle">{userInitial}</div>
                 <span className="user-email-text">{shortEmail}</span>
@@ -95,12 +130,11 @@ export default function Navbar({
               )}
             </div>
           ) : (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <div className="auth-buttons-group">
               <button
                 type="button"
-                className="btn btn-sm btn-secondary"
+                className="btn btn-sm btn-ghost nav-signin-btn"
                 onClick={() => onOpenAuth('signin')}
-                style={{ padding: '6px 12px', fontSize: '0.8rem' }}
               >
                 <User size={13} />
                 <span>Sign In</span>
@@ -108,103 +142,87 @@ export default function Navbar({
 
               <button
                 type="button"
-                className="btn btn-sm btn-primary"
+                className="btn btn-sm btn-primary nav-signup-btn"
                 onClick={() => onOpenAuth('signup')}
-                style={{ padding: '6px 12px', fontSize: '0.8rem' }}
               >
                 <Sparkles size={13} />
-                <span>Sign Up Free</span>
+                <span className="signup-label-full">Sign Up Free</span>
+                <span className="signup-label-short">Sign Up</span>
               </button>
             </div>
           )}
-
-          {/* Theme Toggle */}
-          <div className="theme-toggle-wrap">
-            <button
-              className="icon-btn"
-              onClick={toggleTheme}
-              title={theme === 'dark' ? 'Switch to Light Theme' : 'Switch to Dark Theme'}
-              aria-label="Toggle Theme"
-            >
-              {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-            </button>
-          </div>
         </div>
       </div>
 
-      <nav className="nav-tabs" aria-label="Main Navigation">
-        <button
-          className={`nav-tab-btn ${activeTab === 'shorten' ? 'active' : ''}`}
-          onClick={() => setActiveTab('shorten')}
-        >
-          <Link2 size={13} />
-          <span>Shorten</span>
-        </button>
+      {/* Second Row: Dedicated Responsive Segmented Tool Tabs Bar */}
+      <div className="navbar-tabs-container">
+        <nav className="nav-tabs" aria-label="Tool Navigation">
+          <button
+            type="button"
+            className={`nav-tab-btn ${activeTab === 'shorten' ? 'active' : ''}`}
+            onClick={() => setActiveTab('shorten')}
+          >
+            <Link2 size={14} />
+            <span>Shorten</span>
+          </button>
 
-        <button
-          className={`nav-tab-btn ${activeTab === 'qr' ? 'active' : ''}`}
-          onClick={() => setActiveTab('qr')}
-        >
-          <QrCode size={13} />
-          <span>QR Code</span>
-        </button>
+          <button
+            type="button"
+            className={`nav-tab-btn ${activeTab === 'qr' ? 'active' : ''}`}
+            onClick={() => setActiveTab('qr')}
+          >
+            <QrCode size={14} />
+            <span>QR Code</span>
+          </button>
 
-        <button
-          className={`nav-tab-btn ${activeTab === 'paste' ? 'active' : ''}`}
-          onClick={() => setActiveTab('paste')}
-        >
-          <FileText size={13} />
-          <span>Paste & Docs</span>
-        </button>
+          <button
+            type="button"
+            className={`nav-tab-btn ${activeTab === 'paste' ? 'active' : ''}`}
+            onClick={() => setActiveTab('paste')}
+          >
+            <FileText size={14} />
+            <span>Paste & Docs</span>
+          </button>
 
-        <button
-          className={`nav-tab-btn ${activeTab === 'files' ? 'active' : ''}`}
-          onClick={() => setActiveTab('files')}
-        >
-          <Upload size={13} />
-          <span>Files</span>
-        </button>
+          <button
+            type="button"
+            className={`nav-tab-btn ${activeTab === 'files' ? 'active' : ''}`}
+            onClick={() => setActiveTab('files')}
+          >
+            <FolderUp size={14} />
+            <span>Files</span>
+          </button>
 
-        <button
-          className={`nav-tab-btn ${activeTab === 'sharing' ? 'active' : ''}`}
-          onClick={() => setActiveTab('sharing')}
-        >
-          <Radio size={13} />
-          <span>Sharing</span>
-          {transfersCount > 0 && (
-            <span style={{
-              fontSize: '0.65rem',
-              background: 'var(--primary-accent)',
-              color: '#ffffff',
-              padding: '0 5px',
-              borderRadius: '9999px',
-              marginLeft: '2px'
-            }}>
-              {transfersCount}
-            </span>
-          )}
-        </button>
+          <button
+            type="button"
+            className={`nav-tab-btn ${activeTab === 'sharing' ? 'active' : ''}`}
+            onClick={() => setActiveTab('sharing')}
+          >
+            <Share2 size={14} />
+            <span>Sharing</span>
+            {transfersCount > 0 && (
+              <span className="nav-tab-badge accent">
+                {transfersCount}
+              </span>
+            )}
+          </button>
 
-        <button
-          className={`nav-tab-btn ${activeTab === 'history' ? 'active' : ''}`}
-          onClick={() => setActiveTab('history')}
-        >
-          <Clock size={13} />
-          <span>History</span>
-          {linksCount > 0 && (
-            <span style={{
-              fontSize: '0.65rem',
-              background: 'var(--border-default)',
-              color: 'var(--text-secondary)',
-              padding: '0 5px',
-              borderRadius: '9999px',
-              marginLeft: '2px'
-            }}>
-              {linksCount}
-            </span>
-          )}
-        </button>
-      </nav>
+          <button
+            type="button"
+            className={`nav-tab-btn ${activeTab === 'history' ? 'active' : ''}`}
+            onClick={() => setActiveTab('history')}
+          >
+            <History size={14} />
+            <span>History</span>
+            {linksCount > 0 && (
+              <span className="nav-tab-badge">
+                {linksCount}
+              </span>
+            )}
+          </button>
+        </nav>
+      </div>
     </header>
   );
 }
+
