@@ -29,7 +29,14 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState('shorten'); // 'shorten' | 'qr' | 'paste' | 'files' | 'sharing' | 'history'
   const [localDevice, setLocalDevice] = useState(getLocalDevice);
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(() => {
+    try {
+      const stored = localStorage.getItem('qvlink_auth_user');
+      return stored ? JSON.parse(stored) : null;
+    } catch (e) {
+      return null;
+    }
+  });
 
   // Modals state
   const [authModalOpen, setAuthModalOpen] = useState(false);
@@ -51,17 +58,59 @@ export default function App() {
   const [redirectCode, setRedirectCode] = useState(null);
   const [pasteDocCode, setPasteDocCode] = useState(null);
 
-  // Auth session initialization
+  // Direct Google OAuth code receiver (when redirected back from Google)
+  useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    const authCode = searchParams.get('code');
+    if (authCode) {
+      const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || localStorage.getItem('qvlink_google_client_id');
+      const clientSecret = localStorage.getItem('qvlink_google_client_secret');
+
+      fetch('/api/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code: authCode,
+          redirect_uri: window.location.origin,
+          client_id: clientId || undefined,
+          client_secret: clientSecret || undefined
+        })
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success && data.user) {
+          localStorage.setItem('qvlink_auth_user', JSON.stringify(data.user));
+          setUser(data.user);
+          showToast(`Welcome, ${data.user.email}! Direct Google sign-in active.`, 'success');
+          const cleanUrl = window.location.origin + window.location.pathname + window.location.hash;
+          window.history.replaceState(null, '', cleanUrl);
+        } else if (data.error) {
+          showToast(`Google authentication error: ${data.error}`, 'danger');
+        }
+      })
+      .catch(err => {
+        showToast(`Google sign-in error: ${err.message}`, 'danger');
+      });
+    }
+  }, []);
+
+  // Auth session initialization and listeners
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user || null);
+      if (session?.user) {
+        setUser(session.user);
+        localStorage.setItem('qvlink_auth_user', JSON.stringify(session.user));
+      }
       if (session && window.location.hash.includes('access_token')) {
         window.history.replaceState(null, '', window.location.pathname);
       }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user || null);
+      if (session?.user) {
+        setUser(session.user);
+        localStorage.setItem('qvlink_auth_user', JSON.stringify(session.user));
+      }
       if (session && window.location.hash.includes('access_token')) {
         window.history.replaceState(null, '', window.location.pathname);
       }
@@ -162,11 +211,14 @@ export default function App() {
 
   const handleSignOut = async () => {
     try {
-      await supabase.auth.signOut();
+      localStorage.removeItem('qvlink_auth_user');
+      await supabase.auth.signOut().catch(() => {});
       setUser(null);
       showToast('Signed out successfully', 'info');
     } catch (e) {
-      showToast('Failed to sign out', 'danger');
+      localStorage.removeItem('qvlink_auth_user');
+      setUser(null);
+      showToast('Signed out successfully', 'info');
     }
   };
 
