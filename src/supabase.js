@@ -169,13 +169,30 @@ export async function uploadFileToCloud(file, deviceToken = '', currentUser = nu
 }
 
 export async function getActiveFiles(deviceToken = null, currentUser = null) {
-  const localFiles = getLocalFiles();
+  const localFiles = getLocalFiles() || [];
   const tokenClean = (deviceToken || '').trim().toLowerCase();
   const userId = currentUser?.id;
   const userEmail = (currentUser?.email || '').trim().toLowerCase();
 
-  // Purge any foreign files leaked into local storage
-  const myLocalFiles = (localFiles || []).filter(f => {
+  let cloudFiles = [];
+  try {
+    cloudFiles = await getStorageData('files', []);
+  } catch (err) {}
+
+  // If caller is doing a global lookup (no deviceToken and no currentUser)
+  if (!tokenClean && !userId && !userEmail) {
+    const fileMap = new Map();
+    (cloudFiles || []).forEach(f => {
+      if (f && f.id && !isExpired(f.createdAt)) fileMap.set(f.id, f);
+    });
+    localFiles.forEach(f => {
+      if (f && f.id && !isExpired(f.createdAt)) fileMap.set(f.id, f);
+    });
+    return Array.from(fileMap.values());
+  }
+
+  // Filter local files strictly for this device or signed-in user
+  const myLocalFiles = localFiles.filter(f => {
     if (!f || isExpired(f.createdAt)) return false;
     const dev = (f.creatorDevice || '').trim().toLowerCase();
     const uId = f.creatorUser;
@@ -186,26 +203,6 @@ export async function getActiveFiles(deviceToken = null, currentUser = null) {
     if (userEmail && uEmail && uEmail === userEmail) return true;
     return false;
   });
-
-  if (myLocalFiles.length !== (localFiles || []).length) {
-    saveAllLocalFiles(myLocalFiles);
-  }
-
-  let cloudFiles = [];
-  try {
-    cloudFiles = await getStorageData('files', []);
-  } catch (err) {}
-
-  if (!deviceToken && !currentUser) {
-    const fileMap = new Map();
-    (cloudFiles || []).forEach(f => {
-      if (f && f.id && !isExpired(f.createdAt)) fileMap.set(f.id, f);
-    });
-    myLocalFiles.forEach(f => {
-      if (f && f.id && !isExpired(f.createdAt)) fileMap.set(f.id, f);
-    });
-    return Array.from(fileMap.values());
-  }
 
   const myCloudFiles = (cloudFiles || []).filter(f => {
     if (!f || isExpired(f.createdAt)) return false;
@@ -279,13 +276,30 @@ export async function createPasteDoc({ title = '', content = '', format = 'markd
 }
 
 export async function getActivePastes(deviceToken = null, currentUser = null) {
-  const localPastes = getLocalPastes();
+  const localPastes = getLocalPastes() || [];
   const tokenClean = (deviceToken || '').trim().toLowerCase();
   const userId = currentUser?.id;
   const userEmail = (currentUser?.email || '').trim().toLowerCase();
 
-  // Purge any foreign pastes leaked into local storage
-  const myLocalPastes = (localPastes || []).filter(p => {
+  let cloudPastes = [];
+  try {
+    cloudPastes = await getStorageData('pastes', []);
+  } catch (err) {}
+
+  // If caller is doing a global lookup (no deviceToken and no currentUser)
+  if (!tokenClean && !userId && !userEmail) {
+    const pasteMap = new Map();
+    (cloudPastes || []).forEach(p => {
+      if (p && p.id && !isExpired(p.createdAt)) pasteMap.set(p.id, p);
+    });
+    localPastes.forEach(p => {
+      if (p && p.id && !isExpired(p.createdAt)) pasteMap.set(p.id, p);
+    });
+    return Array.from(pasteMap.values());
+  }
+
+  // Filter local pastes strictly for this device or signed-in user
+  const myLocalPastes = localPastes.filter(p => {
     if (!p || isExpired(p.createdAt)) return false;
     const dev = (p.creatorDevice || '').trim().toLowerCase();
     const uId = p.creatorUser;
@@ -296,26 +310,6 @@ export async function getActivePastes(deviceToken = null, currentUser = null) {
     if (userEmail && uEmail && uEmail === userEmail) return true;
     return false;
   });
-
-  if (myLocalPastes.length !== (localPastes || []).length) {
-    saveAllLocalPastes(myLocalPastes);
-  }
-
-  let cloudPastes = [];
-  try {
-    cloudPastes = await getStorageData('pastes', []);
-  } catch (err) {}
-
-  if (!deviceToken && !currentUser) {
-    const pasteMap = new Map();
-    (cloudPastes || []).forEach(p => {
-      if (p && p.id && !isExpired(p.createdAt)) pasteMap.set(p.id, p);
-    });
-    myLocalPastes.forEach(p => {
-      if (p && p.id && !isExpired(p.createdAt)) pasteMap.set(p.id, p);
-    });
-    return Array.from(pasteMap.values());
-  }
 
   const myCloudPastes = (cloudPastes || []).filter(p => {
     if (!p || isExpired(p.createdAt)) return false;
