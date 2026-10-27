@@ -10,10 +10,13 @@ import {
 } from '../utils/deviceTransferManager.js';
 import { fetchKnownDevices, saveLocalDevice } from '../utils/deviceIdentity.js';
 import { getRemainingTime } from '../supabase.js';
+import { verifyToolUsage, consumeToolUsage } from '../utils/rateLimiter.js';
 
 export default function SharingSection({
   localDevice,
+  currentUser = null,
   onDeviceUpdated,
+  onLimitReached,
   initialContent = '',
   initialTitle = '',
   showToast
@@ -77,6 +80,17 @@ export default function SharingSection({
       return;
     }
 
+    // Rate limit check for guest users (1 per 24h)
+    const limitCheck = await verifyToolUsage('sharing', currentUser);
+    if (!limitCheck.allowed) {
+      if (onLimitReached) {
+        onLimitReached('sharing', limitCheck.hoursLeft);
+      } else {
+        showToast(`Free daily limit reached (1/1 per 24h). Resets in ${limitCheck.hoursLeft}h. Sign in for unlimited!`, 'warning');
+      }
+      return;
+    }
+
     setIsSending(true);
     try {
       const item = await sendTransfer({
@@ -89,6 +103,7 @@ export default function SharingSection({
         burnAfterRead: false
       });
 
+      await consumeToolUsage('sharing', currentUser);
       showToast(
         targetToken
           ? `Sent directly to device ${targetToken}`

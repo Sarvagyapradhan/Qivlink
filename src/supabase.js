@@ -11,11 +11,12 @@ export const SUPABASE_CONFIG = {
 
 const activeKey = SUPABASE_CONFIG.serviceKey || SUPABASE_CONFIG.anonKey;
 
-// Supabase client instance using service role key (or anon key) for robust sync
-export const supabase = createClient(SUPABASE_CONFIG.url, activeKey, {
+// Supabase client instance configured with persistent auth for Email & Google OAuth
+export const supabase = createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey, {
   auth: {
-    persistSession: false,
-    autoRefreshToken: false
+    persistSession: true,
+    autoRefreshToken: true,
+    detectSessionInUrl: true
   }
 });
 
@@ -222,4 +223,101 @@ export async function deletePasteDoc(id, deviceToken = null) {
   }
   return filtered;
 }
+
+/**
+ * Developer API Key Management
+ */
+export async function getUserApiKey(userId) {
+  if (!userId) return null;
+  const keys = await getStorageData('api_keys', []);
+  const found = keys.find(k => k.userId === userId);
+  return found || null;
+}
+
+export async function generateUserApiKey(userId, userEmail = '') {
+  if (!userId) throw new Error('User must be signed in to generate an API key');
+  const keys = await getStorageData('api_keys', []);
+  const randomBytes = Array.from(crypto.getRandomValues(new Uint8Array(24)))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+  const keyString = `qvl_live_${randomBytes}`;
+  
+  const newKeyRecord = {
+    userId,
+    userEmail,
+    apiKey: keyString,
+    createdAt: Date.now(),
+    lastUsedAt: null,
+    requestsCount: 0
+  };
+
+  const filtered = keys.filter(k => k.userId !== userId);
+  const updated = [newKeyRecord, ...filtered];
+  await setStorageData('api_keys', updated);
+  return newKeyRecord;
+}
+
+export async function validateApiKey(providedKey) {
+  if (!providedKey || !providedKey.startsWith('qvl_live_')) return null;
+  const keys = await getStorageData('api_keys', []);
+  const found = keys.find(k => k.apiKey === providedKey.trim());
+  if (found) {
+    found.lastUsedAt = Date.now();
+    found.requestsCount = (found.requestsCount || 0) + 1;
+    setStorageData('api_keys', keys).catch(() => {});
+    return found;
+  }
+  return null;
+}
+
+/**
+ * 24-Hour Guest Usage Ledger (Cloud & Device Fingerprint Backed)
+ */
+const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+
+export async function getGuestUsageLedger() {
+  return await getStorageData('guest_usage_ledger', []);
+}
+
+export async function checkGuestUsageAllowed(fingerprint, tool) {
+  if (!fingerprint) return { allowed: true, remaining: 1 };
+  const ledger = await getGuestUsageLedger();
+  const now = Date.now();
+  
+  // Clean records older than 24h
+  const activeEntries = ledger.filter(item => now - item.timestamp < TWENTY_FOUR_HOURS_MS);
+  if (activeEntries.length !== ledger.length) {
+    setStorageData('guest_usage_ledger', activeEntries).catch(() => {});
+  }
+
+  const existing = activeEntries.find(
+    item => item.fingerprint === fingerprint && item.tool === tool
+  );
+
+  if (existing) {
+    const elapsed = now - existing.timestamp;
+    const remainingMs = TWENTY_FOUR_HOURS_MS - elapsed;
+    const hoursLeft = Math.ceil(remainingMs / (60 * 60 * 1000));
+    return {
+      allowed: false,
+      remaining: 0,
+      hoursLeft,
+      nextResetTime: existing.timestamp + TWENTY_FOUR_HOURS_MS
+    };
+  }
+
+  return { allowed: true, remaining: 1, hoursLeft: 0 };
+}
+
+export async function recordGuestUsage(fingerprint, tool) {
+  if (!fingerprint) return;
+  const ledger = await getGuestUsageLedger();
+  const now = Date.now();
+  const updated = [
+    { fingerprint, tool, timestamp: now },
+    ...ledger.filter(item => !(item.fingerprint === fingerprint && item.tool === tool))
+  ];
+  await setStorageData('guest_usage_ledger', updated);
+}
+
 

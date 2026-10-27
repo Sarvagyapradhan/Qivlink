@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Download, Copy, Check } from 'lucide-react';
 import { renderToCanvas, downloadQrPng, copyQrToClipboard } from '../utils/qrGenerator.js';
+import { verifyToolUsage, consumeToolUsage } from '../utils/rateLimiter.js';
 
-export default function QRStudioSection({ initialValue = '', showToast }) {
+export default function QRStudioSection({ initialValue = '', currentUser = null, onLimitReached, showToast }) {
   const [content, setContent] = useState(initialValue || window.location.origin);
   const [copied, setCopied] = useState(false);
   const canvasRef = useRef(null);
@@ -25,13 +26,21 @@ export default function QRStudioSection({ initialValue = '', showToast }) {
   }, [content]);
 
   const handleDownload = async () => {
+    const limitCheck = await verifyToolUsage('qr', currentUser);
+    if (!limitCheck.allowed) {
+      if (onLimitReached) onLimitReached('qr', limitCheck.hoursLeft);
+      else showToast(`Free daily limit reached (1/1 per 24h). Resets in ${limitCheck.hoursLeft}h. Sign in for unlimited!`, 'warning');
+      return;
+    }
+
     try {
-      await downloadQrPng(content, 'qrcode.png', 1024, {
+      await downloadQrPng(content, 'qvlink-qr.png', 1024, {
         colorDark: '#0f172a',
         colorLight: '#ffffff',
         errorCorrectionLevel: 'M',
         margin: 2
       });
+      await consumeToolUsage('qr', currentUser);
       showToast('QR code downloaded', 'success');
     } catch (e) {
       showToast('Download failed', 'danger');
@@ -39,6 +48,13 @@ export default function QRStudioSection({ initialValue = '', showToast }) {
   };
 
   const handleCopy = async () => {
+    const limitCheck = await verifyToolUsage('qr', currentUser);
+    if (!limitCheck.allowed) {
+      if (onLimitReached) onLimitReached('qr', limitCheck.hoursLeft);
+      else showToast(`Free daily limit reached (1/1 per 24h). Resets in ${limitCheck.hoursLeft}h. Sign in for unlimited!`, 'warning');
+      return;
+    }
+
     try {
       await copyQrToClipboard(content, 512, {
         colorDark: '#0f172a',
@@ -46,6 +62,7 @@ export default function QRStudioSection({ initialValue = '', showToast }) {
         errorCorrectionLevel: 'M',
         margin: 2
       });
+      await consumeToolUsage('qr', currentUser);
       setCopied(true);
       showToast('QR code image copied', 'success');
       setTimeout(() => setCopied(false), 2000);

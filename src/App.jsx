@@ -8,16 +8,20 @@ import SharingSection from './components/SharingSection.jsx';
 import HistorySection from './components/HistorySection.jsx';
 import RedirectHandler from './components/RedirectHandler.jsx';
 import PasteViewer from './components/PasteViewer.jsx';
+import AuthModal from './components/AuthModal.jsx';
+import ApiKeyModal from './components/ApiKeyModal.jsx';
+import LimitReachedModal from './components/LimitReachedModal.jsx';
 
 import { getLocalDevice, registerDeviceInCloud } from './utils/deviceIdentity.js';
 import { getActiveLinks } from './utils/linkManager.js';
 import { getAllTransfers } from './utils/deviceTransferManager.js';
-import { getActivePastes, getActiveFiles } from './supabase.js';
+import { getActivePastes, getActiveFiles, supabase } from './supabase.js';
+import { TOOL_NAMES } from './utils/rateLimiter.js';
 
 export default function App() {
   const [theme, setTheme] = useState(() => {
     try {
-      return localStorage.getItem('qivlink_theme') || 'light';
+      return localStorage.getItem('qvlink_theme') || localStorage.getItem('qivlink_theme') || 'light';
     } catch (e) {
       return 'light';
     }
@@ -25,6 +29,15 @@ export default function App() {
 
   const [activeTab, setActiveTab] = useState('shorten'); // 'shorten' | 'qr' | 'paste' | 'files' | 'sharing' | 'history'
   const [localDevice, setLocalDevice] = useState(getLocalDevice);
+  const [user, setUser] = useState(null);
+
+  // Modals state
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authModalMode, setAuthModalMode] = useState('signin');
+  const [apiKeyModalOpen, setApiKeyModalOpen] = useState(false);
+  const [limitModalOpen, setLimitModalOpen] = useState(false);
+  const [limitModalData, setLimitModalData] = useState({ toolName: '', hoursLeft: 24 });
+
   const [links, setLinks] = useState([]);
   const [transfers, setTransfers] = useState([]);
   const [pastes, setPastes] = useState([]);
@@ -37,6 +50,19 @@ export default function App() {
   // Routing states
   const [redirectCode, setRedirectCode] = useState(null);
   const [pasteDocCode, setPasteDocCode] = useState(null);
+
+  // Auth session initialization
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user || null);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user || null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   const checkRoute = () => {
     const hash = window.location.hash || '';
@@ -69,7 +95,7 @@ export default function App() {
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     try {
-      localStorage.setItem('qivlink_theme', theme);
+      localStorage.setItem('qvlink_theme', theme);
     } catch (e) {}
   }, [theme]);
 
@@ -82,7 +108,7 @@ export default function App() {
     setToasts(prev => [...prev, { id, message, type }]);
     setTimeout(() => {
       setToasts(prev => prev.filter(t => t.id !== id));
-    }, 3000);
+    }, 3200);
   };
 
   const refreshAll = async () => {
@@ -123,6 +149,29 @@ export default function App() {
     setLinks(prev => [newLink, ...prev.filter(l => l.id !== newLink.id)]);
   };
 
+  const handleOpenAuth = (mode = 'signin') => {
+    setAuthModalMode(mode);
+    setAuthModalOpen(true);
+  };
+
+  const handleSignOut = async () => {
+    try {
+      await supabase.auth.signOut();
+      setUser(null);
+      showToast('Signed out successfully', 'info');
+    } catch (e) {
+      showToast('Failed to sign out', 'danger');
+    }
+  };
+
+  const handleLimitReached = (toolKey, hoursLeft) => {
+    setLimitModalData({
+      toolName: TOOL_NAMES[toolKey] || toolKey,
+      hoursLeft: hoursLeft || 24
+    });
+    setLimitModalOpen(true);
+  };
+
   // Route 1: Short link redirect
   if (redirectCode) {
     return (
@@ -159,9 +208,12 @@ export default function App() {
 
   return (
     <div className="app-viewport">
+      {/* Dynamic Animated Ambient Mesh Gradient Background */}
       <div className="gradient-ambient-container" aria-hidden="true">
         <div className="gradient-orb orb-1" />
         <div className="gradient-orb orb-2" />
+        <div className="gradient-orb orb-3" />
+        <div className="gradient-orb orb-4" />
       </div>
 
       <Navbar
@@ -169,15 +221,21 @@ export default function App() {
         setActiveTab={setActiveTab}
         theme={theme}
         toggleTheme={toggleTheme}
+        user={user}
+        onOpenAuth={handleOpenAuth}
+        onOpenApiKey={() => setApiKeyModalOpen(true)}
+        onSignOut={handleSignOut}
         linksCount={links.length}
         transfersCount={incomingCount}
       />
 
-      <main className="site-container" style={{ paddingBottom: '36px', flex: 1 }}>
+      <main className="site-container" style={{ paddingBottom: '40px', flex: 1 }}>
         {activeTab === 'shorten' && (
           <ShortenerSection
             deviceToken={localDevice.token}
+            currentUser={user}
             onLinkCreated={handleLinkCreated}
+            onLimitReached={handleLimitReached}
             onSelectForQr={handleSelectForQr}
             onSelectForBeam={handleSelectForSharing}
             showToast={showToast}
@@ -187,6 +245,8 @@ export default function App() {
         {activeTab === 'qr' && (
           <QRStudioSection
             initialValue={qrPrefill}
+            currentUser={user}
+            onLimitReached={handleLimitReached}
             showToast={showToast}
           />
         )}
@@ -194,7 +254,9 @@ export default function App() {
         {activeTab === 'paste' && (
           <PasteDocSection
             deviceToken={localDevice.token}
+            currentUser={user}
             onDocCreated={(newDoc) => setPastes(prev => [newDoc, ...prev.filter(p => p.id !== newDoc.id)])}
+            onLimitReached={handleLimitReached}
             showToast={showToast}
             onSelectForQr={handleSelectForQr}
           />
@@ -203,8 +265,10 @@ export default function App() {
         {activeTab === 'files' && (
           <FileShareSection
             deviceToken={localDevice.token}
+            currentUser={user}
             onFileUploaded={(newFile) => setFiles(prev => [newFile, ...prev.filter(f => f.id !== newFile.id)])}
             onFileDeleted={(id) => setFiles(prev => prev.filter(f => f.id !== id))}
+            onLimitReached={handleLimitReached}
             showToast={showToast}
             onSelectForQr={handleSelectForQr}
           />
@@ -213,7 +277,9 @@ export default function App() {
         {activeTab === 'sharing' && (
           <SharingSection
             localDevice={localDevice}
+            currentUser={user}
             onDeviceUpdated={setLocalDevice}
+            onLimitReached={handleLimitReached}
             initialContent={sharingPrefill.content}
             initialTitle={sharingPrefill.title}
             showToast={showToast}
@@ -236,6 +302,35 @@ export default function App() {
         )}
       </main>
 
+      {/* Auth Modal */}
+      <AuthModal
+        isOpen={authModalOpen}
+        initialMode={authModalMode}
+        onClose={() => setAuthModalOpen(false)}
+        onAuthSuccess={(authedUser) => {
+          setUser(authedUser);
+          showToast(`Welcome back, ${authedUser.email}! Unlimited plan active.`, 'success');
+        }}
+      />
+
+      {/* Developer API Key Modal */}
+      <ApiKeyModal
+        isOpen={apiKeyModalOpen}
+        onClose={() => setApiKeyModalOpen(false)}
+        user={user}
+        showToast={showToast}
+      />
+
+      {/* Guest Limit Reached Modal */}
+      <LimitReachedModal
+        isOpen={limitModalOpen}
+        onClose={() => setLimitModalOpen(false)}
+        onOpenAuth={(mode) => handleOpenAuth(mode)}
+        toolName={limitModalData.toolName}
+        hoursLeft={limitModalData.hoursLeft}
+      />
+
+      {/* Toast notifications */}
       <div className="toast-container">
         {toasts.map(toast => (
           <div key={toast.id} className="toast-item">
@@ -246,10 +341,12 @@ export default function App() {
 
       <footer className="site-container app-footer">
         <div>
-          <strong>Qivlink</strong> — Fast, privacy-focused link shortening, offline QR, and content sharing
+          <strong>Qvlink</strong> — Fast, privacy-focused link shortening, offline QR, and content sharing
         </div>
         <div style={{ display: 'flex', gap: '14px', alignItems: 'center' }}>
           <span>7-Day Rolling Retention</span>
+          <span>•</span>
+          <span>Developer API Ready</span>
           <span>•</span>
           <span>Zero Tracking</span>
         </div>

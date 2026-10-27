@@ -3,10 +3,13 @@ import { Link2, Copy, Check, QrCode, ExternalLink, ShieldCheck, ArrowRight, Radi
 import confetti from 'canvas-confetti';
 import { createShortLink } from '../utils/linkManager.js';
 import { getRemainingTime } from '../supabase.js';
+import { verifyToolUsage, consumeToolUsage } from '../utils/rateLimiter.js';
 
 export default function ShortenerSection({
   deviceToken,
+  currentUser = null,
   onLinkCreated,
+  onLimitReached,
   onSelectForQr,
   onSelectForBeam,
   showToast
@@ -26,6 +29,17 @@ export default function ShortenerSection({
       return;
     }
 
+    // Rate limit check for guest users (1 per 24h)
+    const limitCheck = await verifyToolUsage('shorten', currentUser);
+    if (!limitCheck.allowed) {
+      if (onLimitReached) {
+        onLimitReached('shorten', limitCheck.hoursLeft);
+      } else {
+        showToast(`Free daily limit reached (1/1 per 24h). Resets in ${limitCheck.hoursLeft}h. Sign in for unlimited!`, 'warning');
+      }
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const newLink = await createShortLink({
@@ -40,6 +54,7 @@ export default function ShortenerSection({
       setUrl('');
       setCustomAlias('');
       setTitle('');
+      await consumeToolUsage('shorten', currentUser);
       showToast('Link shortened successfully', 'success');
 
       try {

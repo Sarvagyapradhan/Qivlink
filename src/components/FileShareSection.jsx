@@ -3,6 +3,7 @@ import {
   Upload, File, Download, Trash2, Copy, Check, QrCode, ExternalLink, HardDrive, AlertCircle
 } from 'lucide-react';
 import { uploadFileToCloud, getActiveFiles, deleteFileFromCloud, getRemainingTime, MAX_FILE_SIZE } from '../supabase.js';
+import { verifyToolUsage, consumeToolUsage } from '../utils/rateLimiter.js';
 
 function formatBytes(bytes, decimals = 2) {
   if (!+bytes) return '0 Bytes';
@@ -13,7 +14,7 @@ function formatBytes(bytes, decimals = 2) {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
 }
 
-export default function FileShareSection({ deviceToken = '', onFileUploaded, onFileDeleted, showToast, onSelectForQr }) {
+export default function FileShareSection({ deviceToken = '', currentUser = null, onFileUploaded, onFileDeleted, onLimitReached, showToast, onSelectForQr }) {
   const [files, setFiles] = useState([]);
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -41,9 +42,21 @@ export default function FileShareSection({ deviceToken = '', onFileUploaded, onF
       return;
     }
 
+    // Rate limit check for guest users (1 per 24h)
+    const limitCheck = await verifyToolUsage('files', currentUser);
+    if (!limitCheck.allowed) {
+      if (onLimitReached) {
+        onLimitReached('files', limitCheck.hoursLeft);
+      } else {
+        showToast(`Free daily limit reached (1/1 per 24h). Resets in ${limitCheck.hoursLeft}h. Sign in for unlimited!`, 'warning');
+      }
+      return;
+    }
+
     setIsUploading(true);
     try {
       const uploaded = await uploadFileToCloud(file, deviceToken);
+      await consumeToolUsage('files', currentUser);
       showToast(`Uploaded ${file.name} successfully`, 'success');
       setFiles(prev => [uploaded, ...prev]);
       if (onFileUploaded) onFileUploaded(uploaded);
