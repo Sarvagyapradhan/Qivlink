@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, Mail, Lock, Eye, EyeOff, ArrowRight, Sparkles, CheckCircle2, AlertCircle } from 'lucide-react';
-import { supabase } from '../supabase.js';
+import { supabase, authSignUpWithAutoConfirm, authSignInWithAutoConfirm } from '../supabase.js';
 
 export default function AuthModal({ isOpen, onClose, onAuthSuccess, initialMode = 'signin' }) {
   const [mode, setMode] = useState(initialMode); // 'signin' | 'signup'
@@ -21,30 +21,40 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, initialMode 
 
     try {
       if (mode === 'signup') {
-        const { data, error } = await supabase.auth.signUp({
+        const result = await authSignUpWithAutoConfirm({
           email: email.trim(),
           password
         });
-        if (error) throw error;
-        if (data.session) {
-          setSuccessMsg('Account created successfully! Enjoy unlimited access.');
-          if (onAuthSuccess) onAuthSuccess(data.user);
-          setTimeout(() => onClose(), 1500);
+
+        if (result.session) {
+          setSuccessMsg('Account created & verified! Unlimited plan active.');
+          if (onAuthSuccess) onAuthSuccess(result.user);
+          setTimeout(() => onClose(), 1200);
+        } else if (result.requiresEmailCheck) {
+          setSuccessMsg('Account registered! If confirmation is required, please check your inbox or sign in below.');
+          setMode('signin');
         } else {
-          setSuccessMsg('Verification email sent. Please check your inbox.');
+          setSuccessMsg('Welcome to Qvlink! Unlimited plan active.');
+          if (onAuthSuccess) onAuthSuccess(result.user);
+          setTimeout(() => onClose(), 1200);
         }
       } else {
-        const { data, error } = await supabase.auth.signInWithPassword({
+        const result = await authSignInWithAutoConfirm({
           email: email.trim(),
           password
         });
-        if (error) throw error;
         setSuccessMsg('Signed in successfully! Unlimited access active.');
-        if (onAuthSuccess) onAuthSuccess(data.user);
-        setTimeout(() => onClose(), 1200);
+        if (onAuthSuccess) onAuthSuccess(result.user);
+        setTimeout(() => onClose(), 1000);
       }
     } catch (err) {
-      setErrorMsg(err.message || 'Authentication failed. Please verify your credentials.');
+      const msg = err.message || '';
+      if (msg.toLowerCase().includes('already registered')) {
+        setErrorMsg('This email is already registered. Please enter your password to Sign In.');
+        setMode('signin');
+      } else {
+        setErrorMsg(msg || 'Authentication failed. Please verify your credentials.');
+      }
     } finally {
       setLoading(false);
     }
@@ -54,15 +64,42 @@ export default function AuthModal({ isOpen, onClose, onAuthSuccess, initialMode 
     setErrorMsg('');
     setLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
+          skipBrowserRedirect: true,
           redirectTo: window.location.origin
         }
       });
+
       if (error) throw error;
+
+      if (data?.url) {
+        // Pre-flight probe to verify provider is enabled before redirecting user
+        try {
+          const probe = await fetch(data.url);
+          if (!probe.ok && probe.status === 400) {
+            const body = await probe.text();
+            if (body.includes('Unsupported provider') || body.includes('validation_failed')) {
+              setErrorMsg('Google Sign-In is not enabled yet in your Supabase project (Authentication > Providers > Google). To enable it, turn on Google in Supabase dashboard. In the meantime, please sign in or register with Email & Password below!');
+              setLoading(false);
+              return;
+            }
+          }
+        } catch (probeErr) {
+          // If probe fails due to CORS, continue with redirect
+        }
+
+        // Provider is enabled - proceed to Google sign-in
+        window.location.href = data.url;
+      }
     } catch (err) {
-      setErrorMsg(err.message || 'Google sign-in could not be initiated.');
+      const msg = err.message || (typeof err === 'object' ? JSON.stringify(err) : String(err));
+      if (msg.includes('Unsupported provider') || msg.includes('validation_failed')) {
+        setErrorMsg('Google Sign-In is not enabled yet in this Supabase project (Authentication > Providers > Google). Please sign in or register with Email & Password below!');
+      } else {
+        setErrorMsg(msg || 'Google sign-in could not be initiated.');
+      }
       setLoading(false);
     }
   };

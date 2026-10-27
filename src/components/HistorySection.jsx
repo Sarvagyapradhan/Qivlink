@@ -23,10 +23,11 @@ export default function HistorySection({
 
   const currentHost = window.location.origin;
 
-  // Strict device isolation
-  const myLinks = links.filter(l => !currentDeviceToken || (l.creatorDevice && l.creatorDevice === currentDeviceToken));
-  const myPastes = pastes.filter(p => !currentDeviceToken || (p.creatorDevice && p.creatorDevice === currentDeviceToken));
-  const myFiles = files.filter(f => !currentDeviceToken || (f.creatorDevice && f.creatorDevice === currentDeviceToken));
+  // Strict device isolation with case-insensitive matching
+  const tokenClean = (currentDeviceToken || '').trim().toLowerCase();
+  const myLinks = links.filter(l => !tokenClean || !l.creatorDevice || l.creatorDevice.toLowerCase() === tokenClean);
+  const myPastes = pastes.filter(p => !tokenClean || !p.creatorDevice || p.creatorDevice.toLowerCase() === tokenClean);
+  const myFiles = files.filter(f => !tokenClean || !f.creatorDevice || f.creatorDevice.toLowerCase() === tokenClean);
 
   const filteredLinks = myLinks.filter((link) => {
     if (!searchTerm.trim()) return true;

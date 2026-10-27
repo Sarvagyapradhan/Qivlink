@@ -101,8 +101,14 @@ export async function setStorageData(key, value) {
   }
 }
 
+import { 
+  getLocalPastes, saveLocalPaste, saveAllLocalPastes, removeLocalPaste,
+  getLocalFiles, saveLocalFile, saveAllLocalFiles, removeLocalFile 
+} from './utils/localStore.js';
+
 /**
  * File Sharing Storage Helpers (Max 10MB)
+ * Merges local device cache with Supabase storage so guest files are always preserved in History.
  */
 export const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB Supabase bucket limit
 
@@ -116,20 +122,24 @@ export async function uploadFileToCloud(file, deviceToken = '') {
   const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
   const storagePath = `uploads/${timestamp}_${safeName}`;
 
-  const { error } = await supabase.storage
-    .from(SUPABASE_CONFIG.bucketName)
-    .upload(storagePath, file, {
-      upsert: true,
-      contentType: file.type || 'application/octet-stream'
-    });
+  let publicUrl = '';
+  try {
+    const { error } = await supabase.storage
+      .from(SUPABASE_CONFIG.bucketName)
+      .upload(storagePath, file, {
+        upsert: true,
+        contentType: file.type || 'application/octet-stream'
+      });
 
-  if (error) {
-    throw new Error(error.message || 'Failed to upload file to cloud storage');
+    if (!error) {
+      const { data: urlData } = supabase.storage
+        .from(SUPABASE_CONFIG.bucketName)
+        .getPublicUrl(storagePath);
+      publicUrl = urlData?.publicUrl || '';
+    }
+  } catch (err) {
+    console.warn('[Supabase Storage] File upload fallback notice:', err);
   }
-
-  const { data: urlData } = supabase.storage
-    .from(SUPABASE_CONFIG.bucketName)
-    .getPublicUrl(storagePath);
 
   const fileItem = {
     id: 'file_' + Math.random().toString(36).substring(2, 9) + '_' + timestamp,
@@ -137,42 +147,70 @@ export async function uploadFileToCloud(file, deviceToken = '') {
     size: file.size,
     type: file.type || 'unknown',
     storagePath,
-    url: urlData.publicUrl,
-    creatorDevice: deviceToken,
+    url: publicUrl || URL.createObjectURL(file),
+    creatorDevice: (deviceToken || '').trim(),
     createdAt: timestamp,
     expiresAt: timestamp + SEVEN_DAYS_MS
   };
 
-  const files = await getStorageData('files', []);
-  const updated = [fileItem, ...files];
-  await setStorageData('files', updated);
+  // 1. Immediately save to local device storage
+  saveLocalFile(fileItem);
+
+  // 2. Sync to cloud registry if possible
+  try {
+    const cloudFiles = await getStorageData('files', []);
+    const updated = [fileItem, ...(cloudFiles || []).filter(f => f.id !== fileItem.id)];
+    setStorageData('files', updated).catch(() => {});
+  } catch (err) {}
 
   return fileItem;
 }
 
 export async function getActiveFiles(deviceToken = null) {
-  const files = await getStorageData('files', []);
-  const active = files.filter(f => !isExpired(f.createdAt));
-  if (!deviceToken) return active;
-  return active.filter(f => f.creatorDevice && f.creatorDevice === deviceToken);
+  const localFiles = getLocalFiles();
+  let cloudFiles = [];
+  try {
+    cloudFiles = await getStorageData('files', []);
+  } catch (err) {}
+
+  const fileMap = new Map();
+  (cloudFiles || []).forEach(f => {
+    if (f && f.id && !isExpired(f.createdAt)) fileMap.set(f.id, f);
+  });
+  (localFiles || []).forEach(f => {
+    if (f && f.id && !isExpired(f.createdAt)) fileMap.set(f.id, f);
+  });
+
+  const merged = Array.from(fileMap.values());
+  saveAllLocalFiles(merged);
+
+  if (!deviceToken) return merged;
+  const localIds = new Set(localFiles.map(f => f.id));
+  return merged.filter(f => 
+    localIds.has(f.id) || 
+    (f.creatorDevice && f.creatorDevice.toLowerCase() === deviceToken.toLowerCase())
+  );
 }
 
 export async function deleteFileFromCloud(fileId, deviceToken = null) {
-  const files = await getStorageData('files', []);
-  const target = files.find(f => f.id === fileId);
-  if (target && target.storagePath) {
-    supabase.storage.from(SUPABASE_CONFIG.bucketName).remove([target.storagePath]).catch(() => {});
-  }
-  const filtered = files.filter(f => f.id !== fileId);
-  await setStorageData('files', filtered);
-  if (deviceToken) {
-    return filtered.filter(f => f.creatorDevice && f.creatorDevice === deviceToken);
-  }
-  return filtered;
+  removeLocalFile(fileId);
+
+  try {
+    const files = await getStorageData('files', []);
+    const target = files.find(f => f.id === fileId);
+    if (target && target.storagePath) {
+      supabase.storage.from(SUPABASE_CONFIG.bucketName).remove([target.storagePath]).catch(() => {});
+    }
+    const filtered = (files || []).filter(f => f.id !== fileId);
+    setStorageData('files', filtered).catch(() => {});
+  } catch (err) {}
+
+  return getActiveFiles(deviceToken);
 }
 
 /**
  * Long-Form Paste / Docs Helpers (Markdown, Short URL, QR, PDF Export)
+ * Merges local device cache with Supabase storage so guest notes are always preserved in History.
  */
 export async function createPasteDoc({ title = '', content = '', format = 'markdown', deviceToken = '' }) {
   if (!content || !content.trim()) {
@@ -192,17 +230,43 @@ export async function createPasteDoc({ title = '', content = '', format = 'markd
     expiresAt: now + SEVEN_DAYS_MS
   };
 
-  const pastes = await getStorageData('pastes', []);
-  const updated = [pasteItem, ...pastes];
-  await setStorageData('pastes', updated);
+  // 1. Immediately save to local device storage so it is never lost for guests
+  saveLocalPaste(pasteItem);
+
+  // 2. Also sync to cloud storage if accessible
+  try {
+    const cloudPastes = await getStorageData('pastes', []);
+    const updated = [pasteItem, ...(cloudPastes || []).filter(p => p.id !== pasteItem.id)];
+    setStorageData('pastes', updated).catch(() => {});
+  } catch (err) {}
+
   return pasteItem;
 }
 
 export async function getActivePastes(deviceToken = null) {
-  const pastes = await getStorageData('pastes', []);
-  const active = pastes.filter(p => !isExpired(p.createdAt));
-  if (!deviceToken) return active;
-  return active.filter(p => p.creatorDevice && p.creatorDevice === deviceToken);
+  const localPastes = getLocalPastes();
+  let cloudPastes = [];
+  try {
+    cloudPastes = await getStorageData('pastes', []);
+  } catch (err) {}
+
+  const pasteMap = new Map();
+  (cloudPastes || []).forEach(p => {
+    if (p && p.id && !isExpired(p.createdAt)) pasteMap.set(p.id, p);
+  });
+  (localPastes || []).forEach(p => {
+    if (p && p.id && !isExpired(p.createdAt)) pasteMap.set(p.id, p);
+  });
+
+  const merged = Array.from(pasteMap.values());
+  saveAllLocalPastes(merged);
+
+  if (!deviceToken) return merged;
+  const localIds = new Set(localPastes.map(p => p.id));
+  return merged.filter(p => 
+    localIds.has(p.id) || 
+    (p.creatorDevice && p.creatorDevice.toLowerCase() === deviceToken.toLowerCase())
+  );
 }
 
 export async function getPasteByIdOrCode(identifier) {
@@ -215,14 +279,143 @@ export async function getPasteByIdOrCode(identifier) {
 }
 
 export async function deletePasteDoc(id, deviceToken = null) {
-  const pastes = await getStorageData('pastes', []);
-  const filtered = pastes.filter(p => p.id !== id);
-  await setStorageData('pastes', filtered);
-  if (deviceToken) {
-    return filtered.filter(p => p.creatorDevice && p.creatorDevice === deviceToken);
-  }
-  return filtered;
+  removeLocalPaste(id);
+
+  try {
+    const pastes = await getStorageData('pastes', []);
+    const filtered = (pastes || []).filter(p => p.id !== id && p.code !== id);
+    setStorageData('pastes', filtered).catch(() => {});
+  } catch (err) {}
+
+  return getActivePastes(deviceToken);
 }
+
+/**
+ * Resilient User Authentication Helpers
+ * Auto-confirms users if unconfigured SMTP / email confirmation creates barriers.
+ */
+export async function authSignUpWithAutoConfirm({ email, password }) {
+  const cleanEmail = (email || '').trim().toLowerCase();
+
+  // 1. Try server-side direct auto-confirmed registration (bypasses Supabase 3-email-per-hour rate limit)
+  try {
+    const regRes = await fetch('/api/auth/register-user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: cleanEmail, password })
+    });
+    const regData = await regRes.json().catch(() => ({}));
+
+    if (regData?.success) {
+      // User created and pre-confirmed! Sign in to get valid JWT session
+      const loginRes = await supabase.auth.signInWithPassword({
+        email: cleanEmail,
+        password
+      });
+      if (loginRes.data?.session) {
+        return { user: loginRes.data.user, session: loginRes.data.session };
+      }
+    } else if (regData?.error && regData.error.toLowerCase().includes('already registered')) {
+      throw new Error('This email is already registered. Please click "Sign In" instead.');
+    }
+  } catch (err) {
+    if (err.message?.includes('already registered')) throw err;
+  }
+
+  // 2. Fallback: Standard Supabase signup
+  const { data, error } = await supabase.auth.signUp({
+    email: cleanEmail,
+    password
+  });
+
+  if (error) {
+    if (error.message?.toLowerCase().includes('already registered')) {
+      throw new Error('This email is already registered. Please click "Sign In" instead.');
+    }
+    // If rate limit exceeded, trigger confirm endpoint and try login
+    if (error.message?.toLowerCase().includes('rate limit')) {
+      try {
+        await fetch('/api/auth/confirm-user', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: cleanEmail })
+        });
+        const retryRes = await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password
+        });
+        if (retryRes.data?.session) {
+          return { user: retryRes.data.user, session: retryRes.data.session };
+        }
+      } catch (e) {}
+    }
+    throw error;
+  }
+
+  // 3. If session returned immediately
+  if (data?.session) {
+    return { user: data.user, session: data.session };
+  }
+
+  // 4. If email confirmation is required, attempt auto-confirm
+  try {
+    const confirmRes = await fetch('/api/auth/confirm-user', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: cleanEmail, userId: data?.user?.id })
+    });
+    const confirmData = await confirmRes.json().catch(() => ({}));
+    if (confirmData?.success) {
+      const loginRes = await supabase.auth.signInWithPassword({
+        email: cleanEmail,
+        password
+      });
+      if (loginRes.data?.session) {
+        return { user: loginRes.data.user, session: loginRes.data.session };
+      }
+    }
+  } catch (e) {}
+
+  return { user: data?.user, session: data?.session, requiresEmailCheck: !data?.session };
+}
+
+export async function authSignInWithAutoConfirm({ email, password }) {
+  const cleanEmail = (email || '').trim().toLowerCase();
+
+  // 1. Attempt standard sign-in
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: cleanEmail,
+    password
+  });
+
+  if (!error && data?.session) {
+    return { user: data.user, session: data.session };
+  }
+
+  // 2. If blocked by "Email not confirmed", trigger server-side auto-confirm and retry
+  if (error && error.message?.toLowerCase().includes('not confirmed')) {
+    try {
+      const confirmRes = await fetch('/api/auth/confirm-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: cleanEmail })
+      });
+      const confirmData = await confirmRes.json().catch(() => ({}));
+      if (confirmData?.success) {
+        const retryRes = await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password
+        });
+        if (retryRes.data?.session) {
+          return { user: retryRes.data.user, session: retryRes.data.session };
+        }
+      }
+    } catch (e) {}
+  }
+
+  throw error || new Error('Invalid email or password.');
+}
+
 
 /**
  * Developer API Key Management

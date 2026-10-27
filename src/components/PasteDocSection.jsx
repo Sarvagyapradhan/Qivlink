@@ -4,6 +4,7 @@ import {
   ListOrdered, Quote, Minus, Download, Share2, Copy, Check, QrCode, ExternalLink, Printer, Sparkles
 } from 'lucide-react';
 import { marked } from 'marked';
+import { sanitizeHtml } from '../utils/sanitizeHtml.js';
 import { createPasteDoc } from '../supabase.js';
 import { verifyToolUsage, consumeToolUsage } from '../utils/rateLimiter.js';
 
@@ -318,7 +319,7 @@ export default function PasteDocSection({
             {content ? (
               <div
                 className="markdown-rendered-view"
-                dangerouslySetInnerHTML={{ __html: marked.parse(content) }}
+                dangerouslySetInnerHTML={{ __html: sanitizeHtml(marked.parse(content)) }}
               />
             ) : (
               <div className="preview-empty-state">

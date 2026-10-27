@@ -21,6 +21,18 @@ export default function RedirectHandler({ shortCode, onBackToApp }) {
           return;
         }
 
+        // Strict security verification: ensure only valid http/https URLs are executed
+        try {
+          const urlObj = new URL(link.targetUrl);
+          if (urlObj.protocol !== 'http:' && urlObj.protocol !== 'https:') {
+            setStatus('not_found');
+            return;
+          }
+        } catch (e) {
+          setStatus('not_found');
+          return;
+        }
+
         setLinkInfo(link);
         setTargetUrl(link.targetUrl);
         setStatus('redirecting');

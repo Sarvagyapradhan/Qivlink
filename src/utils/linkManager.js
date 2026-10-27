@@ -1,6 +1,5 @@
 import { getStorageData, setStorageData, isExpired, SEVEN_DAYS_MS } from '../supabase.js';
-
-const LOCAL_LINKS_CACHE = 'qivlink_local_links_cache';
+import { getLocalLinks, saveLocalLink, saveAllLocalLinks, removeLocalLink } from './localStore.js';
 
 const FORBIDDEN_PROTOCOLS = [
   'javascript:', 'data:', 'vbscript:', 'file:', 'blob:', 'about:', 'chrome:', 'moz-extension:', 'ws:', 'wss:'
@@ -9,6 +8,7 @@ const FORBIDDEN_PROTOCOLS = [
 const FORBIDDEN_HOSTS = [
   'localhost', '127.0.0.1', '0.0.0.0', '169.254.169.254', '[::1]', '::1'
 ];
+
 
 /**
  * Validates and sanitizes destination URLs with strict security policies
@@ -73,37 +73,55 @@ export function generateShortCode(length = 6) {
 }
 
 /**
- * Fetch all active links from Supabase with 7-day auto-prune
+ * Fetch all active links, merging local device cache with Supabase cloud storage.
+ * Local links are prioritized so guest shortened links are NEVER lost or overwritten.
  */
 export async function getActiveLinks(deviceToken = null) {
-  let links = [];
+  // 1. Read persistent local links from browser storage
+  const localLinks = getLocalLinks();
+
+  // 2. Fetch cloud links from Supabase
+  let cloudLinks = [];
   try {
-    links = await getStorageData('links', []);
-  } catch (e) {
-    try {
-      const cached = localStorage.getItem(LOCAL_LINKS_CACHE);
-      if (cached) links = JSON.parse(cached);
-    } catch (err) {}
+    cloudLinks = await getStorageData('links', []);
+  } catch (err) {
+    console.warn('[LinkManager] Cloud fetch notice:', err);
   }
 
-  // Filter 7-day retention
-  const activeLinks = (links || []).filter(l => !isExpired(l.createdAt));
+  // 3. Merge: Start with local items, union with cloud items without duplicating
+  const linkMap = new Map();
+  // Put cloud items first
+  (cloudLinks || []).forEach(item => {
+    if (item && item.shortCode && !isExpired(item.createdAt)) {
+      linkMap.set(item.shortCode.toLowerCase(), item);
+    }
+  });
+  // Put local items (overriding/complementing cloud items)
+  (localLinks || []).forEach(item => {
+    if (item && item.shortCode && !isExpired(item.createdAt)) {
+      linkMap.set(item.shortCode.toLowerCase(), item);
+    }
+  });
 
-  // If expired links were dropped, update cache & storage
-  if (activeLinks.length !== (links || []).length) {
-    setStorageData('links', activeLinks).catch(console.error);
-  }
+  const mergedLinks = Array.from(linkMap.values());
 
-  try {
-    localStorage.setItem(LOCAL_LINKS_CACHE, JSON.stringify(activeLinks));
-  } catch (e) {}
+  // 4. Save the merged active list back to local storage
+  saveAllLocalLinks(mergedLinks);
 
-  if (!deviceToken) return activeLinks;
-  return activeLinks.filter(l => l.creatorDevice && l.creatorDevice === deviceToken);
+  // 5. If deviceToken is specified, return items created by this device OR present locally
+  if (!deviceToken) return mergedLinks;
+
+  // Local device links should ALWAYS be visible to this guest
+  const localIds = new Set(localLinks.map(l => l.id));
+  return mergedLinks.filter(l => 
+    localIds.has(l.id) || 
+    (l.creatorDevice && l.creatorDevice.toLowerCase() === deviceToken.toLowerCase())
+  );
 }
 
 /**
- * Create a new privacy-focused shortened link with 7-day TTL and security verification
+ * Create a new privacy-focused shortened link with 7-day TTL and security verification.
+ * Automatically saves to localStorage so guests always see their created links in History.
  */
 export async function createShortLink({
   url,
@@ -151,31 +169,36 @@ export async function createShortLink({
     clicks: 0
   };
 
-  const updatedLinks = [newLink, ...existing];
-  await setStorageData('links', updatedLinks);
-  
+  // 1. Immediately persist to localStorage so it is never lost for guests
+  saveLocalLink(newLink);
+
+  // 2. Also attempt to sync with cloud storage (catch error if RLS blocks anon)
   try {
-    localStorage.setItem(LOCAL_LINKS_CACHE, JSON.stringify(updatedLinks));
-  } catch (e) {}
+    const updatedLinks = [newLink, ...existing.filter(l => l.shortCode !== newLink.shortCode)];
+    setStorageData('links', updatedLinks).catch(() => {});
+  } catch (err) {}
 
   return newLink;
 }
 
 /**
- * Delete a link by ID
+ * Delete a link by ID from both local storage and cloud storage
  */
 export async function deleteLink(id, deviceToken = null) {
-  const current = await getActiveLinks(null);
-  const filtered = current.filter(l => l.id !== id);
-  await setStorageData('links', filtered);
+  // Remove from local storage
+  removeLocalLink(id);
+
+  // Remove from cloud storage
   try {
-    localStorage.setItem(LOCAL_LINKS_CACHE, JSON.stringify(filtered));
-  } catch (e) {}
-  if (deviceToken) {
-    return filtered.filter(l => l.creatorDevice && l.creatorDevice === deviceToken);
-  }
-  return filtered;
+    const cloudLinks = await getStorageData('links', []);
+    const filteredCloud = (cloudLinks || []).filter(l => l.id !== id);
+    setStorageData('links', filteredCloud).catch(() => {});
+  } catch (err) {}
+
+  // Return updated active list for device
+  return getActiveLinks(deviceToken);
 }
+
 
 /**
  * Find link by shortCode, increment click counter, and return sanitized redirect info

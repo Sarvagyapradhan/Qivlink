@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { marked } from 'marked';
+import { sanitizeHtml } from '../utils/sanitizeHtml.js';
 import { Copy, Check, Printer, ArrowLeft, Clock, FileText } from 'lucide-react';
 import { getPasteByIdOrCode, getRemainingTime } from '../supabase.js';
 
@@ -51,7 +52,7 @@ export default function PasteViewer({ code, onBackToApp }) {
           </p>
           <button className="btn btn-primary btn-sm" onClick={onBackToApp}>
             <ArrowLeft size={14} />
-            <span>Go to Qivlink Home</span>
+            <span>Go to Qvlink Home</span>
           </button>
         </div>
       </div>
@@ -89,12 +90,12 @@ export default function PasteViewer({ code, onBackToApp }) {
           {doc.title || 'Shared Document'}
         </h1>
         <div style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)', marginBottom: '24px', paddingBottom: '14px', borderBottom: '1px solid var(--border-default)' }}>
-          Published via Qivlink · Retained for 7 days
+          Published via Qvlink · Retained for 7 days
         </div>
 
         <div
           style={{ lineHeight: '1.7', fontSize: '0.96rem' }}
-          dangerouslySetInnerHTML={{ __html: marked.parse(doc.content) }}
+          dangerouslySetInnerHTML={{ __html: sanitizeHtml(marked.parse(doc.content)) }}
         />
       </div>
     </div>
