@@ -429,7 +429,33 @@ export default defineConfig(({ mode }) => {
             res.end();
           });
 
-          // 6. Direct Short Code HTTP 302 Redirect (e.g. http://localhost:3000/pfde9w)
+          // 6. Direct Quick Share Note Dev Route (e.g. /s/873936)
+          server.middlewares.use(async (req, res, next) => {
+            if (req.method !== 'GET') return next();
+            const pathOnly = req.url.split('?')[0];
+            const sMatch = pathOnly.match(/^\/s\/([a-zA-Z0-9_-]+)$/);
+            if (sMatch) {
+              const pin = sMatch[1].replace(/[\s-]/g, '').toUpperCase();
+              try {
+                const list = await fetchJson('transfers.json');
+                const now = Date.now();
+                const found = list.find(t => {
+                  const p = String(t.pin || t.pickupCode || '').trim().replace(/[\s-]/g, '').toUpperCase();
+                  const id = String(t.id || '').trim().toUpperCase();
+                  return p === pin || id === pin;
+                });
+                if (found && now - (found.createdAt || 0) <= 7 * 24 * 3600 * 1000) {
+                  res.statusCode = 200;
+                  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+                  res.end(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Shared Note — Qvlink</title><style>body{font-family:system-ui,-apple-system,sans-serif;padding:30px 16px;background:#090d16;color:#f8fafc;display:flex;justify-content:center;min-height:100vh;align-items:center;margin:0}div.card{max-width:520px;width:100%;background:#111827;padding:28px;border-radius:16px;border:1px solid rgba(255,255,255,0.12);box-shadow:0 20px 40px rgba(0,0,0,0.4)}pre{background:#0b0f19;padding:16px;border-radius:10px;white-space:pre-wrap;font-family:monospace;font-size:0.9rem;border:1px solid #1f2937}button,a{display:inline-block;padding:10px 18px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;border-radius:8px;text-decoration:none;border:none;cursor:pointer;font-weight:700;margin-top:10px;font-size:0.86rem}</style></head><body><div class="card"><div style="font-size:0.8rem;color:#3b82f6;font-weight:700">PIN: ${pin}</div><h2 style="margin:8px 0 14px">${found.title || 'Shared Note'}</h2><pre id="c">${found.content}</pre><div style="display:flex;gap:10px"><button onclick="navigator.clipboard.writeText(document.getElementById('c').innerText);this.innerText='Copied! ✓'">Copy Note</button><a href="/?tab=sharing" style="background:#1f2937;border:1px solid #374151">Open Qvlink</a></div></div></body></html>`);
+                  return;
+                }
+              } catch (e) {}
+            }
+            next();
+          });
+
+          // 7. Direct Short Code HTTP 302 Redirect (e.g. http://localhost:3000/pfde9w)
           server.middlewares.use(async (req, res, next) => {
             if (req.method !== 'GET') return next();
 
@@ -438,7 +464,7 @@ export default defineConfig(({ mode }) => {
             if (!match) return next();
 
             const code = match[1].toLowerCase();
-            const reserved = ['src', 'node_modules', 'api', 'assets', 'favicon', 'shorten', 'qr', 'paste', 'files', 'sharing', 'history'];
+            const reserved = ['src', 'node_modules', 'api', 'assets', 'favicon', 'shorten', 'qr', 'paste', 'files', 'sharing', 'history', 's', 'p'];
             if (reserved.includes(code)) return next();
 
             try {

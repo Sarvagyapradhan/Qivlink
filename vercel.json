@@ -7,15 +7,15 @@
       "destination": "/api/$1"
     },
     {
-      "source": "/s/:pin",
+      "source": "/s/(.*)",
+      "destination": "/api/s?pin=$1"
+    },
+    {
+      "source": "/p/(.*)",
       "destination": "/index.html"
     },
     {
-      "source": "/p/:code",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/:code([a-zA-Z0-9_-]{3,64})",
+      "source": "/:code([a-zA-Z0-9_-]+)",
       "destination": "/api/redirect?code=$1"
     },
     {
