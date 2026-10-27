@@ -49,7 +49,8 @@ async function saveTransfers(supabase, list) {
     const blob = Buffer.from(payload, 'utf8');
     await supabase.storage.from(BUCKET).upload('transfers.json', blob, {
       upsert: true,
-      contentType: 'application/json'
+      contentType: 'application/json',
+      cacheControl: '0'
     });
     return true;
   } catch (e) {
@@ -59,6 +60,11 @@ async function saveTransfers(supabase, list) {
 }
 
 export default async function handler(req, res) {
+  // Prevent any intermediary CDN or browser caching of fresh shares
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+
   const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || 
                    req.socket?.remoteAddress || 
                    'unknown';

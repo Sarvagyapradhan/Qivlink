@@ -109,23 +109,30 @@ export async function receiveQuickShare(code) {
 
   const cleanCode = String(code).trim().replace(/[\s-]/g, '').toUpperCase();
 
-  // 1. Try server API
-  try {
-    const res = await fetch(`/api/share?pin=${encodeURIComponent(cleanCode)}`);
-    const data = await res.json();
-    if (res.ok && data.success && data.share) {
-      return data.share;
-    }
-    if (data.error) {
-      throw new Error(data.error);
-    }
-  } catch (err) {
-    if (err.message && !err.message.includes('fetch')) {
-      throw err;
-    }
-  }
+  // Helper function to query the API with cache-busting
+  const fetchShareFromApi = async () => {
+    try {
+      const res = await fetch(`/api/share?pin=${encodeURIComponent(cleanCode)}&_t=${Date.now()}`, {
+        cache: 'no-store'
+      });
+      const data = await res.json();
+      if (res.ok && data.success && data.share) {
+        return data.share;
+      }
+    } catch (e) {}
+    return null;
+  };
 
-  // 2. Check local sent cache as fallback
+  // Attempt 1: Immediate fetch
+  let share = await fetchShareFromApi();
+  if (share) return share;
+
+  // Attempt 2: Auto-retry after 650ms (in case cloud upload from sender device is just completing)
+  await new Promise(resolve => setTimeout(resolve, 650));
+  share = await fetchShareFromApi();
+  if (share) return share;
+
+  // Fallback: Check local cache
   const localList = getLocalSentShares();
   const localFound = localList.find(s => {
     const p = String(s.pin || '').trim().replace(/[\s-]/g, '').toUpperCase();
@@ -137,7 +144,7 @@ export async function receiveQuickShare(code) {
     return localFound;
   }
 
-  throw new Error('No active share found with this 6-digit code. Please verify the code.');
+  throw new Error(`No active note found for code "${cleanCode}". Please verify the PIN.`);
 }
 
 // Backwards-compatible aliases for other components

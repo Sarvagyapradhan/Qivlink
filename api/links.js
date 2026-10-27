@@ -30,7 +30,8 @@ async function saveLinks(supabase, list) {
     const blob = Buffer.from(payload, 'utf8');
     await supabase.storage.from(BUCKET).upload('links.json', blob, {
       upsert: true,
-      contentType: 'application/json'
+      contentType: 'application/json',
+      cacheControl: '0'
     });
     return true;
   } catch (e) {
@@ -40,6 +41,10 @@ async function saveLinks(supabase, list) {
 }
 
 export default async function handler(req, res) {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+
   const supabase = getSupabaseClient();
   const now = Date.now();
 

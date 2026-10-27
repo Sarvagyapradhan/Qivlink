@@ -148,9 +148,9 @@ export default function SharingSection({
   };
 
   const handleRetrievePin = async (pinToUse) => {
-    const targetPin = (pinToUse || inputPin || '').trim().replace(/[\s-]/g, '');
+    const targetPin = (pinToUse || inputPin || '').trim().replace(/[^0-9]/g, '');
     if (!targetPin) {
-      showToast('Enter a 6-digit code to retrieve', 'warning');
+      showToast('Please enter a 6-digit PIN', 'warning');
       return;
     }
 
@@ -162,9 +162,18 @@ export default function SharingSection({
       loadLocalLists();
       showToast('Note retrieved successfully!', 'success');
     } catch (err) {
-      showToast(err.message || 'Could not find a note with this code.', 'danger');
+      showToast(err.message || 'Could not find a note with this code. Please check the PIN.', 'danger');
     } finally {
       setIsReceiving(false);
+    }
+  };
+
+  const handlePinInputChange = (e) => {
+    const digitsOnly = e.target.value.replace(/[^0-9]/g, '').slice(0, 6);
+    if (digitsOnly.length > 3) {
+      setInputPin(`${digitsOnly.slice(0, 3)} ${digitsOnly.slice(3)}`);
+    } else {
+      setInputPin(digitsOnly);
     }
   };
 
@@ -512,7 +521,7 @@ export default function SharingSection({
                     placeholder="e.g. 492 810"
                     maxLength={8}
                     value={inputPin}
-                    onChange={(e) => setInputPin(e.target.value)}
+                    onChange={handlePinInputChange}
                     autoComplete="off"
                     required
                   />
