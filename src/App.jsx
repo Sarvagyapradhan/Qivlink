@@ -55,10 +55,16 @@ export default function App() {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user || null);
+      if (session && window.location.hash.includes('access_token')) {
+        window.history.replaceState(null, '', window.location.pathname);
+      }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user || null);
+      if (session && window.location.hash.includes('access_token')) {
+        window.history.replaceState(null, '', window.location.pathname);
+      }
     });
 
     return () => subscription.unsubscribe();
