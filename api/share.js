@@ -34,15 +34,34 @@ function getSupabaseClient() {
 const BUCKET = process.env.VITE_SUPABASE_BUCKET || 'qivlink_store';
 
 async function fetchTransfers(supabase) {
-  try {
-    const { data, error } = await supabase.storage.from(BUCKET).download('transfers.json');
-    if (error || !data) return [];
-    const text = await data.text();
-    const list = JSON.parse(text);
-    return Array.isArray(list) ? list : [];
-  } catch (e) {
-    return [];
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const { data, error } = await supabase.storage.from(BUCKET).download('transfers.json');
+      if (error) {
+        const msg = String(error.message || '').toLowerCase();
+        if (error.statusCode === '404' || msg.includes('not found') || error.code === 'NoSuchKey') {
+          return { list: [], exists: false };
+        }
+        if (attempt === 0) {
+          await new Promise(r => setTimeout(r, 350));
+          continue;
+        }
+        console.warn('Storage fetch notice:', error.message);
+        return { list: [], exists: true, error: true };
+      }
+      if (!data) return { list: [], exists: false };
+      const text = await data.text();
+      const list = JSON.parse(text);
+      return { list: Array.isArray(list) ? list : [], exists: true };
+    } catch (e) {
+      if (attempt === 0) {
+        await new Promise(r => setTimeout(r, 350));
+        continue;
+      }
+      return { list: [], exists: true, error: true };
+    }
   }
+  return { list: [], exists: false };
 }
 
 async function saveTransfers(supabase, list) {
@@ -86,14 +105,27 @@ export default async function handler(req, res) {
       }
 
       const cleanPin = String(pinQuery).trim().replace(/[\s-]/g, '').toUpperCase();
-      const transfers = await fetchTransfers(supabase);
+      let fetchRes = await fetchTransfers(supabase);
+      let transfers = fetchRes.list;
       const now = Date.now();
 
-      const found = transfers.find(t => {
+      let found = transfers.find(t => {
         const tPin = String(t.pin || t.pickupCode || '').trim().replace(/[\s-]/g, '').toUpperCase();
         const tId = String(t.id || '').trim().toUpperCase();
         return tPin === cleanPin || tId === cleanPin;
       });
+
+      // Server-side retry: wait 450ms and fetch again if note was just posted
+      if (!found) {
+        await new Promise(r => setTimeout(r, 450));
+        fetchRes = await fetchTransfers(supabase);
+        transfers = fetchRes.list;
+        found = transfers.find(t => {
+          const tPin = String(t.pin || t.pickupCode || '').trim().replace(/[\s-]/g, '').toUpperCase();
+          const tId = String(t.id || '').trim().toUpperCase();
+          return tPin === cleanPin || tId === cleanPin;
+        });
+      }
 
       if (!found) {
         return res.status(404).json({ success: false, error: 'No active share found with this code. It may have expired.' });
@@ -135,7 +167,8 @@ export default async function handler(req, res) {
       }
 
       const trimmedContent = String(content).trim().slice(0, 50000); // 50KB max safe payload
-      const transfers = await fetchTransfers(supabase);
+      const fetchRes = await fetchTransfers(supabase);
+      const transfers = fetchRes.list;
       const now = Date.now();
 
       // Clean expired transfers (older than 7 days)

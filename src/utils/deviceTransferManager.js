@@ -123,14 +123,15 @@ export async function receiveQuickShare(code) {
     return null;
   };
 
-  // Attempt 1: Immediate fetch
-  let share = await fetchShareFromApi();
-  if (share) return share;
-
-  // Attempt 2: Auto-retry after 650ms (in case cloud upload from sender device is just completing)
-  await new Promise(resolve => setTimeout(resolve, 650));
-  share = await fetchShareFromApi();
-  if (share) return share;
+  // Multi-pass fetch with backoff to guarantee 1st-try success even during cloud replication
+  const retryDelays = [0, 600, 1100];
+  for (let i = 0; i < retryDelays.length; i++) {
+    if (retryDelays[i] > 0) {
+      await new Promise(resolve => setTimeout(resolve, retryDelays[i]));
+    }
+    const share = await fetchShareFromApi();
+    if (share) return share;
+  }
 
   // Fallback: Check local cache
   const localList = getLocalSentShares();
@@ -144,7 +145,7 @@ export async function receiveQuickShare(code) {
     return localFound;
   }
 
-  throw new Error(`No active note found for code "${cleanCode}". Please verify the PIN.`);
+  throw new Error(`No active note found for PIN "${cleanCode}". Please verify the code or check if it expired.`);
 }
 
 // Backwards-compatible aliases for other components

@@ -34,120 +34,23 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
-export default async function handler(req, res) {
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-  res.setHeader('Content-Type', 'text/html; charset=utf-8');
-
-  const rawPin = req.query.pin || req.query.code || req.query.id || '';
-  const cleanPin = String(rawPin).trim().replace(/[\s-]/g, '').toUpperCase();
-
-  if (!cleanPin) {
-    res.writeHead(302, { Location: '/?tab=sharing' });
-    return res.end();
-  }
-
-  const supabase = getSupabaseClient();
-  const transfers = await fetchTransfers(supabase);
-  const now = Date.now();
-
-  const found = transfers.find(t => {
-    const tPin = String(t.pin || t.pickupCode || '').trim().replace(/[\s-]/g, '').toUpperCase();
-    const tId = String(t.id || '').trim().toUpperCase();
-    return tPin === cleanPin || tId === cleanPin;
-  });
-
-  if (!found || (now - (found.createdAt || 0) > SEVEN_DAYS_MS)) {
-    // Render clean Not Found page
-    return res.status(404).send(`<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Note Not Found — Qvlink</title>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=JetBrains+Mono:wght@600&display=swap" rel="stylesheet">
-  <style>
-    :root {
-      --bg: #0b0f19;
-      --card: rgba(17, 24, 39, 0.9);
-      --border: rgba(255, 255, 255, 0.1);
-      --text: #f8fafc;
-      --text-sub: #94a3b8;
-      --primary: #3b82f6;
-    }
-    @media (prefers-color-scheme: light) {
-      :root {
-        --bg: #f8fafc;
-        --card: rgba(255, 255, 255, 0.95);
-        --border: rgba(0, 0, 0, 0.1);
-        --text: #0f172a;
-        --text-sub: #64748b;
-        --primary: #2563eb;
-      }
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: 'Plus Jakarta Sans', sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-    }
-    .card {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 36px 28px;
-      max-width: 460px;
-      width: 100%;
-      text-align: center;
-      box-shadow: 0 20px 45px rgba(0,0,0,0.25);
-    }
-    .icon { font-size: 40px; margin-bottom: 16px; }
-    h1 { font-size: 1.4rem; font-weight: 700; margin-bottom: 8px; }
-    p { font-size: 0.9rem; color: var(--text-sub); line-height: 1.6; margin-bottom: 24px; }
-    .btn {
-      display: inline-block;
-      width: 100%;
-      padding: 12px 20px;
-      background: linear-gradient(135deg, #2563eb, #1d4ed8);
-      color: #fff;
-      font-weight: 700;
-      border-radius: 10px;
-      text-decoration: none;
-      box-shadow: 0 4px 14px rgba(37,99,235,0.4);
-    }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <div class="icon">🔍</div>
-    <h1>Note Not Found or Expired</h1>
-    <p>No active note was found for PIN <strong>${escapeHtml(cleanPin)}</strong>. It may have expired (7-day lifecycle) or been removed by the sender.</p>
-    <a href="/?tab=sharing" class="btn">Open Qvlink to Share a Note</a>
-  </div>
-</body>
-</html>`);
-  }
-
+function renderNoteHtml(found, cleanPin) {
   const isLink = found.type === 'link' || found.content.startsWith('http://') || found.content.startsWith('https://');
   const safeContent = escapeHtml(found.content);
   const formattedPin = cleanPin.length === 6 ? `${cleanPin.slice(0, 3)} ${cleanPin.slice(3)}` : cleanPin;
 
-  return res.status(200).send(`<!DOCTYPE html>
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${escapeHtml(found.title || 'Shared Note')} — Qvlink</title>
+  <title>${escapeHtml(found.title || (isLink ? 'Shared Link' : 'Shared Note'))} — Qvlink</title>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
   <style>
     :root {
       --bg: #090d16;
-      --card: rgba(17, 24, 39, 0.92);
-      --border: rgba(255, 255, 255, 0.12);
+      --card: rgba(17, 24, 39, 0.94);
+      --border: rgba(255, 255, 255, 0.14);
       --text: #f8fafc;
       --text-sub: #94a3b8;
       --primary: #3b82f6;
@@ -157,8 +60,8 @@ export default async function handler(req, res) {
     @media (prefers-color-scheme: light) {
       :root {
         --bg: #f8fafc;
-        --card: rgba(255, 255, 255, 0.95);
-        --border: rgba(226, 232, 240, 0.9);
+        --card: rgba(255, 255, 255, 0.96);
+        --border: rgba(226, 232, 240, 0.95);
         --text: #0f172a;
         --text-sub: #64748b;
         --primary: #2563eb;
@@ -228,11 +131,11 @@ export default async function handler(req, res) {
       font-family: 'JetBrains Mono', monospace;
       font-size: 0.92rem;
       font-weight: 700;
-      background: rgba(37, 99, 235, 0.12);
+      background: rgba(37, 99, 235, 0.14);
       color: var(--primary);
       padding: 4px 12px;
       border-radius: 9999px;
-      border: 1px solid rgba(37, 99, 235, 0.25);
+      border: 1px solid rgba(37, 99, 235, 0.28);
     }
     .type-badge {
       font-size: 0.78rem;
@@ -365,5 +268,270 @@ export default async function handler(req, res) {
     }
   </script>
 </body>
-</html>`);
+</html>`;
+}
+
+function renderLivePollingHtml(cleanPin) {
+  const formattedPin = cleanPin.length === 6 ? `${cleanPin.slice(0, 3)} ${cleanPin.slice(3)}` : cleanPin;
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Locating Note (${escapeHtml(formattedPin)}) — Qvlink</title>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #090d16;
+      --card: rgba(17, 24, 39, 0.94);
+      --border: rgba(255, 255, 255, 0.14);
+      --text: #f8fafc;
+      --text-sub: #94a3b8;
+      --primary: #3b82f6;
+      --primary-hover: #2563eb;
+      --box-bg: #0f172a;
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f8fafc;
+        --card: rgba(255, 255, 255, 0.96);
+        --border: rgba(226, 232, 240, 0.95);
+        --text: #0f172a;
+        --text-sub: #64748b;
+        --primary: #2563eb;
+        --primary-hover: #1d4ed8;
+        --box-bg: #f1f5f9;
+      }
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+    }
+    .header-bar {
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .brand {
+      font-size: 1.15rem;
+      font-weight: 800;
+      color: var(--text);
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .brand-icon {
+      width: 28px;
+      height: 28px;
+      background: linear-gradient(135deg, #2563eb, #4f46e5);
+      border-radius: 8px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 800;
+    }
+    .card {
+      background: var(--card);
+      border: 1.5px solid var(--border);
+      border-radius: 18px;
+      padding: 32px 28px;
+      max-width: 500px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 20px 45px rgba(0,0,0,0.25);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+    }
+    .spinner {
+      width: 44px;
+      height: 44px;
+      border: 3.5px solid rgba(59, 130, 246, 0.2);
+      border-top-color: #3b82f6;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 20px;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+    .subtitle {
+      font-size: 0.9rem;
+      color: var(--text-sub);
+      line-height: 1.5;
+      margin-bottom: 24px;
+    }
+    .pin-display {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 1.3rem;
+      font-weight: 800;
+      letter-spacing: 2px;
+      color: var(--primary);
+      background: rgba(37, 99, 235, 0.1);
+      padding: 8px 18px;
+      border-radius: 10px;
+      display: inline-block;
+      margin-bottom: 20px;
+      border: 1px solid rgba(37, 99, 235, 0.25);
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 12px 20px;
+      font-size: 0.9rem;
+      font-weight: 700;
+      border-radius: 10px;
+      border: none;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.18s ease;
+      font-family: inherit;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #2563eb, #1d4ed8);
+      color: #fff;
+      box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+      width: 100%;
+    }
+    .btn-primary:hover {
+      background: linear-gradient(135deg, #1d4ed8, #1e40af);
+      transform: translateY(-1px);
+    }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="header-bar">
+    <a href="/" class="brand">
+      <span class="brand-icon">Q</span>
+      <span>Qvlink Quick Share</span>
+    </a>
+  </div>
+
+  <div class="card" id="main-card">
+    <div id="loading-state">
+      <div class="spinner"></div>
+      <div class="pin-display">PIN: ${escapeHtml(formattedPin)}</div>
+      <h1 class="title">Connecting to Shared Note...</h1>
+      <p class="subtitle" id="status-text">Synchronizing latest share data across devices</p>
+    </div>
+
+    <div id="notfound-state" class="hidden">
+      <div style="font-size: 42px; margin-bottom: 16px;">🔍</div>
+      <div class="pin-display">PIN: ${escapeHtml(formattedPin)}</div>
+      <h1 class="title">Note Not Found or Expired</h1>
+      <p class="subtitle">No active note was found for this PIN. It may have expired (7-day lifecycle) or been removed by the sender.</p>
+      <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+        <button class="btn btn-primary" onclick="retryCheck()" style="flex: 1;">Check Again</button>
+        <a href="/?tab=sharing" class="btn" style="flex: 1; background: var(--box-bg); color: var(--text); border: 1.5px solid var(--border);">Share a Note</a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const cleanPin = ${JSON.stringify(cleanPin)};
+    let attempts = 0;
+    const maxAttempts = 5;
+
+    async function pollShare() {
+      attempts++;
+      const statusEl = document.getElementById('status-text');
+      if (statusEl && attempts > 1) {
+        statusEl.textContent = 'Searching cloud store... (attempt ' + attempts + ' of ' + maxAttempts + ')';
+      }
+
+      try {
+        const res = await fetch('/api/share?pin=' + encodeURIComponent(cleanPin) + '&_t=' + Date.now(), {
+          cache: 'no-store'
+        });
+        const data = await res.json();
+        if (res.ok && data.success && data.share) {
+          // Note retrieved successfully! Refresh the page to render complete server-side HTML
+          window.location.reload();
+          return;
+        }
+      } catch (err) {}
+
+      if (attempts < maxAttempts) {
+        setTimeout(pollShare, 650);
+      } else {
+        document.getElementById('loading-state').classList.add('hidden');
+        document.getElementById('notfound-state').classList.remove('hidden');
+      }
+    }
+
+    function retryCheck() {
+      attempts = 0;
+      document.getElementById('notfound-state').classList.add('hidden');
+      document.getElementById('loading-state').classList.remove('hidden');
+      pollShare();
+    }
+
+    // Start polling immediately
+    setTimeout(pollShare, 250);
+  </script>
+</body>
+</html>`;
+}
+
+export default async function handler(req, res) {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+
+  const rawPin = req.query.pin || req.query.code || req.query.id || '';
+  const cleanPin = String(rawPin).trim().replace(/[\s-]/g, '').toUpperCase();
+
+  if (!cleanPin) {
+    res.writeHead(302, { Location: '/?tab=sharing' });
+    return res.end();
+  }
+
+  const supabase = getSupabaseClient();
+  let transfers = await fetchTransfers(supabase);
+  const now = Date.now();
+
+  let found = transfers.find(t => {
+    const tPin = String(t.pin || t.pickupCode || '').trim().replace(/[\s-]/g, '').toUpperCase();
+    const tId = String(t.id || '').trim().toUpperCase();
+    return tPin === cleanPin || tId === cleanPin;
+  });
+
+  // Server-side retry: wait 450ms and check again in case cloud upload is just finishing
+  if (!found) {
+    await new Promise(r => setTimeout(r, 450));
+    transfers = await fetchTransfers(supabase);
+    found = transfers.find(t => {
+      const tPin = String(t.pin || t.pickupCode || '').trim().replace(/[\s-]/g, '').toUpperCase();
+      const tId = String(t.id || '').trim().toUpperCase();
+      return tPin === cleanPin || tId === cleanPin;
+    });
+  }
+
+  // Found and active: Render full note HTML immediately
+  if (found && (now - (found.createdAt || 0) <= SEVEN_DAYS_MS)) {
+    return res.status(200).send(renderNoteHtml(found, cleanPin));
+  }
+
+  // Not found yet or newly created: Render live polling HTML to catch in-flight shares smoothly
+  return res.status(200).send(renderLivePollingHtml(cleanPin));
 }

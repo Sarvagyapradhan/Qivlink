@@ -71,8 +71,22 @@ export default function SharingSection({
   const currentHost = window.location.origin;
 
   const loadLocalLists = () => {
-    setMySentShares(getLocalSentShares());
-    setMyReceivedShares(getLocalReceivedShares());
+    const sent = getLocalSentShares();
+    const received = getLocalReceivedShares();
+    setMySentShares(sent);
+    setMyReceivedShares(received);
+    // Auto-restore the most recent active share card if created within last 24 hours
+    setCreatedShare(prev => {
+      if (prev) return prev;
+      if (sent && sent.length > 0) {
+        const top = sent[0];
+        const age = Date.now() - (top.createdAt || 0);
+        if (age < 24 * 3600 * 1000) {
+          return top;
+        }
+      }
+      return null;
+    });
   };
 
   useEffect(() => {
@@ -437,7 +451,14 @@ export default function SharingSection({
                       flexWrap: 'wrap'
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div
+                      style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer' }}
+                      onClick={() => {
+                        setCreatedShare(item);
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }}
+                      title="Click to view full card and QR code"
+                    >
                       <span className="input-mono" style={{
                         fontSize: '1.1rem',
                         fontWeight: 700,
@@ -458,7 +479,31 @@ export default function SharingSection({
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        onClick={() => {
+                          setCreatedShare(item);
+                          window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }}
+                        title="Display PIN, Direct URL, and QR Code"
+                      >
+                        <QrCode size={13} />
+                        <span>View Card</span>
+                      </button>
+
+                      <a
+                        href={`/s/${item.pin}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn btn-secondary btn-sm"
+                        title="Open Note Link in New Tab"
+                      >
+                        <ExternalLink size={13} />
+                        <span>Open ↗</span>
+                      </a>
+
                       <button
                         type="button"
                         className="btn btn-secondary btn-sm"
@@ -467,16 +512,6 @@ export default function SharingSection({
                       >
                         <Copy size={13} />
                         <span>Copy PIN</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        className="btn btn-secondary btn-sm"
-                        onClick={() => handleCopyShareLink(item.pin)}
-                        title="Copy Share URL"
-                      >
-                        <ExternalLink size={13} />
-                        <span>Link</span>
                       </button>
 
                       <button
@@ -634,7 +669,11 @@ export default function SharingSection({
                       flexWrap: 'wrap'
                     }}
                   >
-                    <div style={{ flex: 1, minWidth: '180px' }}>
+                    <div
+                      style={{ flex: 1, minWidth: '180px', cursor: 'pointer' }}
+                      onClick={() => setRetrievedNote(item)}
+                      title="Click to view full note above"
+                    >
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                         <span className="input-mono" style={{ fontSize: '0.84rem', fontWeight: 700, color: 'var(--primary-accent)' }}>
                           {formatPin(item.pin)}
@@ -655,7 +694,16 @@ export default function SharingSection({
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', gap: '8px' }}>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => setRetrievedNote(item)}
+                        title="Display this note above"
+                      >
+                        <span>View</span>
+                      </button>
+
                       <button
                         type="button"
                         className="btn btn-secondary btn-sm"
