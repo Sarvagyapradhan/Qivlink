@@ -80,7 +80,7 @@ export default function ApiKeyModal({ isOpen, onClose, user, showToast }) {
         data: {
           id: result.id,
           shortCode: result.shortCode,
-          shortUrl: `${window.location.origin}/#/r/${result.shortCode}`,
+          shortUrl: `${window.location.origin}/${result.shortCode}`,
           targetUrl: result.targetUrl,
           retention: '7 days',
           authenticatedUser: user.email

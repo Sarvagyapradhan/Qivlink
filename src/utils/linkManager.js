@@ -77,14 +77,49 @@ export function generateShortCode(length = 6) {
  * Local links are prioritized so guest shortened links are NEVER lost or overwritten.
  */
 export async function getActiveLinks(deviceToken = null, currentUser = null) {
-  const localLinks = getLocalLinks();
+  const localLinks = getLocalLinks() || [];
 
   const tokenClean = (deviceToken || '').trim().toLowerCase();
   const userId = currentUser?.id;
   const userEmail = (currentUser?.email || '').trim().toLowerCase();
 
-  // Purge any foreign links that might have leaked into local storage in previous versions
-  const myLocalLinks = (localLinks || []).filter(item => {
+  // Fetch cloud links (preferring server API with service role key, fallback to direct download)
+  let cloudLinks = [];
+  try {
+    const res = await fetch('/api/links');
+    if (res.ok) {
+      const json = await res.json();
+      if (json.success && Array.isArray(json.links)) {
+        cloudLinks = json.links;
+      }
+    }
+  } catch (e) {}
+
+  if (cloudLinks.length === 0) {
+    try {
+      cloudLinks = await getStorageData('links', []);
+    } catch (err) {}
+  }
+
+  // If caller is doing a global lookup (for redirect routing or alias collision check)
+  if (!tokenClean && !userId && !userEmail) {
+    const linkMap = new Map();
+    (cloudLinks || []).forEach(item => {
+      if (item && item.shortCode && !isExpired(item.createdAt)) {
+        linkMap.set(String(item.shortCode).toLowerCase(), item);
+      }
+    });
+    // Add all active local links
+    localLinks.forEach(item => {
+      if (item && item.shortCode && !isExpired(item.createdAt)) {
+        linkMap.set(String(item.shortCode).toLowerCase(), item);
+      }
+    });
+    return Array.from(linkMap.values());
+  }
+
+  // Filter local links strictly for this device or signed-in user
+  const myLocalLinks = localLinks.filter(item => {
     if (!item || !item.shortCode || isExpired(item.createdAt)) return false;
     const dev = (item.creatorDevice || '').trim().toLowerCase();
     const uId = item.creatorUser;
@@ -95,32 +130,6 @@ export async function getActiveLinks(deviceToken = null, currentUser = null) {
     if (userEmail && uEmail && uEmail === userEmail) return true;
     return false;
   });
-
-  if (myLocalLinks.length !== (localLinks || []).length) {
-    saveAllLocalLinks(myLocalLinks);
-  }
-
-  // 2. Fetch cloud links from Supabase
-  let cloudLinks = [];
-  try {
-    cloudLinks = await getStorageData('links', []);
-  } catch (err) {}
-
-  // If caller is doing a global lookup for redirect routing (no deviceToken and no currentUser)
-  if (!deviceToken && !currentUser) {
-    const linkMap = new Map();
-    (cloudLinks || []).forEach(item => {
-      if (item && item.shortCode && !isExpired(item.createdAt)) {
-        linkMap.set(item.shortCode.toLowerCase(), item);
-      }
-    });
-    myLocalLinks.forEach(item => {
-      if (item && item.shortCode && !isExpired(item.createdAt)) {
-        linkMap.set(item.shortCode.toLowerCase(), item);
-      }
-    });
-    return Array.from(linkMap.values());
-  }
 
   // Filter cloud links strictly for this device or signed-in user
   const myCloudLinks = (cloudLinks || []).filter(item => {
@@ -134,7 +143,7 @@ export async function getActiveLinks(deviceToken = null, currentUser = null) {
     return matchDevice || matchUser;
   });
 
-  // Merge only this user's local and cloud items (NEVER saving foreign links to localStorage)
+  // Merge this user's cloud and local links
   const resultMap = new Map();
   myCloudLinks.forEach(l => resultMap.set(l.id, l));
   myLocalLinks.forEach(l => resultMap.set(l.id, l));
@@ -166,7 +175,7 @@ export async function createShortLink({
   }
 
   const existing = await getActiveLinks(null);
-  if (existing.some(l => l.shortCode.toLowerCase() === code.toLowerCase())) {
+  if (existing.some(l => String(l.shortCode).toLowerCase() === code.toLowerCase())) {
     throw new Error(`The alias "${code}" is already active. Please pick another one or leave blank for auto-generation.`);
   }
 
@@ -198,11 +207,17 @@ export async function createShortLink({
   // 1. Immediately persist to localStorage so it is never lost for guests
   saveLocalLink(newLink);
 
-  // 2. Also attempt to sync with cloud storage (catch error if RLS blocks anon)
+  // 2. Persist to cloud via /api/links (using backend service role key)
   try {
-    const updatedLinks = [newLink, ...existing.filter(l => l.shortCode !== newLink.shortCode)];
-    setStorageData('links', updatedLinks).catch(() => {});
-  } catch (err) {}
+    await fetch('/api/links', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ link: newLink })
+    });
+  } catch (err) {
+    // Fallback direct storage write
+    setStorageData('links', [newLink, ...existing.filter(l => l.shortCode !== newLink.shortCode)]).catch(() => {});
+  }
 
   return newLink;
 }
@@ -214,7 +229,12 @@ export async function deleteLink(id, deviceToken = null) {
   // Remove from local storage
   removeLocalLink(id);
 
-  // Remove from cloud storage
+  // Remove via API
+  try {
+    await fetch(`/api/links?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+  } catch (e) {}
+
+  // Fallback direct storage
   try {
     const cloudLinks = await getStorageData('links', []);
     const filteredCloud = (cloudLinks || []).filter(l => l.id !== id);
@@ -225,25 +245,49 @@ export async function deleteLink(id, deviceToken = null) {
   return getActiveLinks(deviceToken);
 }
 
-
 /**
  * Find link by shortCode, increment click counter, and return sanitized redirect info
  */
 export async function resolveLink(code) {
   if (!code) return null;
-  const cleanCode = code.trim().toLowerCase();
-  const current = await getActiveLinks(null); // Global lookup for redirect route
-  const link = current.find(l => l.shortCode.toLowerCase() === cleanCode);
-  
-  if (!link) return null;
-  if (isExpired(link.createdAt)) return null;
+  const cleanCode = String(code).trim().toLowerCase();
 
-  // Sanity check targetUrl against protocol smuggling
-  const safeTarget = sanitizeUrl(link.targetUrl, false);
-  link.targetUrl = safeTarget;
+  // 1. Check local storage first (instant)
+  const localLinks = getLocalLinks() || [];
+  const localMatch = localLinks.find(l => 
+    l && l.shortCode && 
+    String(l.shortCode).toLowerCase() === cleanCode && 
+    !isExpired(l.createdAt)
+  );
+  if (localMatch) {
+    try {
+      localMatch.targetUrl = sanitizeUrl(localMatch.targetUrl, false);
+      return localMatch;
+    } catch (e) {}
+  }
 
-  link.clicks = (link.clicks || 0) + 1;
-  setStorageData('links', current).catch(console.error);
+  // 2. Check /api/links?code=
+  try {
+    const res = await fetch(`/api/links?code=${encodeURIComponent(cleanCode)}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && data.link && !isExpired(data.link.createdAt)) {
+        data.link.targetUrl = sanitizeUrl(data.link.targetUrl, false);
+        return data.link;
+      }
+    }
+  } catch (e) {}
 
-  return link;
+  // 3. Fallback to getActiveLinks(null)
+  const all = await getActiveLinks(null);
+  const found = all.find(l => String(l.shortCode).toLowerCase() === cleanCode);
+  if (!found || isExpired(found.createdAt)) return null;
+
+  try {
+    found.targetUrl = sanitizeUrl(found.targetUrl, false);
+    return found;
+  } catch (e) {
+    return null;
+  }
 }
+

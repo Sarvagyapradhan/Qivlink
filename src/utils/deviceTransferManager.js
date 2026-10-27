@@ -1,148 +1,150 @@
-import { getStorageData, setStorageData, isExpired, SEVEN_DAYS_MS } from '../supabase.js';
-import { encryptPayload, decryptPayload } from './cryptoSecurity.js';
+/**
+ * Quick Share Transfer Manager
+ * Reliable cross-device sharing via 6-digit PIN and direct links.
+ * Works seamlessly across mobile, desktop, and tablets.
+ */
 
-const LOCAL_TRANSFERS_CACHE = 'qivlink_transfers_cache';
+const LOCAL_SENT_SHARES_KEY = 'qvlink_sent_shares';
 
-export async function getAllTransfers() {
-  let list = [];
+export function getLocalSentShares() {
   try {
-    list = await getStorageData('transfers', []);
+    const raw = localStorage.getItem(LOCAL_SENT_SHARES_KEY);
+    if (!raw) return [];
+    const list = JSON.parse(raw);
+    const now = Date.now();
+    // 7-day retention
+    const active = list.filter(item => now - (item.createdAt || 0) <= 7 * 24 * 3600 * 1000);
+    if (active.length !== list.length) {
+      localStorage.setItem(LOCAL_SENT_SHARES_KEY, JSON.stringify(active));
+    }
+    return active;
   } catch (e) {
-    try {
-      const cached = localStorage.getItem(LOCAL_TRANSFERS_CACHE);
-      if (cached) list = JSON.parse(cached);
-    } catch (err) {}
+    return [];
   }
+}
 
-  // Auto 7-day purge
-  const active = (list || []).filter(item => !isExpired(item.createdAt));
-  if (active.length !== list.length) {
-    setStorageData('transfers', active).catch(console.error);
-  }
-
+export function saveLocalSentShare(item) {
   try {
-    localStorage.setItem(LOCAL_TRANSFERS_CACHE, JSON.stringify(active));
+    const list = getLocalSentShares();
+    const updated = [item, ...list.filter(s => s.id !== item.id && s.pin !== item.pin)];
+    localStorage.setItem(LOCAL_SENT_SHARES_KEY, JSON.stringify(updated.slice(0, 50)));
   } catch (e) {}
+}
 
-  return active;
+export function removeLocalSentShare(id) {
+  try {
+    const list = getLocalSentShares();
+    const updated = list.filter(s => s.id !== id && s.pin !== id);
+    localStorage.setItem(LOCAL_SENT_SHARES_KEY, JSON.stringify(updated));
+  } catch (e) {}
 }
 
 /**
- * Send content to a specific target device token or generate a quick pickup code
- * Secures with AES-256-GCM if passcode is provided.
+ * Create a new Quick Share with an instant 6-digit PIN & direct link
  */
-export async function sendTransfer({
-  targetToken,
-  pickupCode = '',
-  senderDevice,
-  contentType = 'link',
+export async function createQuickShare({
   content,
   title = '',
-  passcode = '',
-  burnAfterRead = false
+  type = 'text',
+  deviceToken = '',
+  currentUser = null
 }) {
   if (!content || !content.trim()) {
-    throw new Error('Content cannot be empty');
+    throw new Error('Please enter some text or a link to share.');
   }
 
   const cleanContent = content.trim();
-  const hasPasscode = Boolean(passcode && passcode.trim());
+  const detectedType = type || (cleanContent.startsWith('http://') || cleanContent.startsWith('https://') ? 'link' : 'text');
 
-  // Encrypt with AES-256-GCM if passcode was set
-  let storedContent = cleanContent;
-  if (hasPasscode) {
-    storedContent = await encryptPayload(cleanContent, passcode.trim());
+  // 1. Try server API
+  try {
+    const res = await fetch('/api/share', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        content: cleanContent,
+        title: title.trim(),
+        type: detectedType,
+        deviceToken,
+        userId: currentUser?.id,
+        email: currentUser?.email
+      })
+    });
+
+    const data = await res.json();
+    if (res.ok && data.success && data.share) {
+      saveLocalSentShare(data.share);
+      return data.share;
+    }
+  } catch (err) {
+    console.warn('API share notice, falling back:', err.message);
   }
 
+  // 2. Local fallback if API is unreachable
   const now = Date.now();
-  const id = 'tx_' + Math.random().toString(36).substring(2, 9) + '_' + now;
-  
-  let finalPickupCode = pickupCode.trim().toUpperCase().replace(/[^A-Z0-9-]/g, '');
-  if (!targetToken && !finalPickupCode) {
-    finalPickupCode = 'QIV-' + Math.floor(1000 + Math.random() * 9000);
-  }
-
-  const transferItem = {
-    id,
-    targetToken: targetToken ? targetToken.trim().toUpperCase().slice(0, 32) : null,
-    pickupCode: finalPickupCode || null,
-    senderToken: senderDevice.token,
-    senderName: senderDevice.name,
-    contentType,
-    content: storedContent,
-    title: (title || '').trim().slice(0, 100) || (contentType === 'link' ? 'Shared Link' : 'Shared Snippet'),
-    hasPasscode,
-    burnAfterRead,
-    readCount: 0,
+  const pin = String(Math.floor(100000 + Math.random() * 900000));
+  const fallbackItem = {
+    id: 'sh_' + Math.random().toString(36).substring(2, 9) + '_' + now,
+    pin,
+    content: cleanContent,
+    title: title.trim() || (detectedType === 'link' ? 'Shared Link' : 'Shared Note'),
+    type: detectedType,
+    creatorDevice: deviceToken,
     createdAt: now,
-    expiresAt: now + SEVEN_DAYS_MS
+    expiresAt: now + 7 * 24 * 3600 * 1000,
+    views: 0
   };
 
-  const existing = await getAllTransfers();
-  const updated = [transferItem, ...existing];
-  await setStorageData('transfers', updated);
+  saveLocalSentShare(fallbackItem);
+  return fallbackItem;
+}
 
+/**
+ * Retrieve shared content using a 6-digit PIN or direct code
+ */
+export async function receiveQuickShare(code) {
+  if (!code || !String(code).trim()) {
+    throw new Error('Please enter a 6-digit share code.');
+  }
+
+  const cleanCode = String(code).trim().replace(/[\s-]/g, '').toUpperCase();
+
+  // 1. Try server API
   try {
-    localStorage.setItem(LOCAL_TRANSFERS_CACHE, JSON.stringify(updated));
-  } catch (e) {}
-
-  return transferItem;
-}
-
-/**
- * Fetch transfers aimed at this device or claimed via pickup code
- */
-export async function getTransfersForDevice(deviceToken) {
-  const all = await getAllTransfers();
-  return all.filter(t => t.targetToken === deviceToken.toUpperCase());
-}
-
-/**
- * Redeem / lookup transfer by pickup code and decrypt if encrypted
- */
-export async function redeemTransferByPickupCode(code, enteredPasscode = '') {
-  if (!code) throw new Error('Please enter a pickup code');
-  const clean = code.trim().toUpperCase();
-  const all = await getAllTransfers();
-  const found = all.find(t => t.pickupCode === clean || (t.id && t.id.toLowerCase() === clean.toLowerCase()));
-
-  if (!found) {
-    throw new Error('No active transfer found with this code. It may have expired or was burned.');
+    const res = await fetch(`/api/share?pin=${encodeURIComponent(cleanCode)}`);
+    const data = await res.json();
+    if (res.ok && data.success && data.share) {
+      return data.share;
+    }
+    if (data.error) {
+      throw new Error(data.error);
+    }
+  } catch (err) {
+    if (err.message && !err.message.includes('fetch')) {
+      throw err;
+    }
   }
 
-  if (isExpired(found.createdAt)) {
-    throw new Error('This transfer has expired (7-day maximum retention reached).');
+  // 2. Check local sent cache as fallback
+  const localList = getLocalSentShares();
+  const localFound = localList.find(s => {
+    const p = String(s.pin || '').trim().replace(/[\s-]/g, '').toUpperCase();
+    const id = String(s.id || '').trim().toUpperCase();
+    return p === cleanCode || id === cleanCode;
+  });
+
+  if (localFound) {
+    return localFound;
   }
 
-  // Decrypt payload if passcode protected
-  let decryptedText = found.content;
-  if (found.hasPasscode) {
-    decryptedText = await decryptPayload(found.content, enteredPasscode.trim());
-  }
-
-  // Update read count / burn after read
-  found.readCount = (found.readCount || 0) + 1;
-  let remaining = all;
-  if (found.burnAfterRead) {
-    remaining = all.filter(t => t.id !== found.id);
-  }
-  await setStorageData('transfers', remaining);
-
-  return {
-    ...found,
-    content: decryptedText
-  };
+  throw new Error('No active share found with this 6-digit code. Please verify the code.');
 }
 
-/**
- * Delete a transfer
- */
-export async function deleteTransfer(id) {
-  const all = await getAllTransfers();
-  const filtered = all.filter(t => t.id !== id);
-  await setStorageData('transfers', filtered);
-  try {
-    localStorage.setItem(LOCAL_TRANSFERS_CACHE, JSON.stringify(filtered));
-  } catch (e) {}
-  return filtered;
-}
+// Backwards-compatible aliases for other components
+export const sendTransfer = createQuickShare;
+export const redeemTransferByPickupCode = receiveQuickShare;
+export const getAllTransfers = async () => getLocalSentShares();
+export const deleteTransfer = async (id) => {
+  removeLocalSentShare(id);
+  return getLocalSentShares();
+};

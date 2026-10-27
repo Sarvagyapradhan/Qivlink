@@ -77,7 +77,7 @@ export default function ShortenerSection({
   };
 
   const currentHost = window.location.origin;
-  const shortUrl = lastCreated ? `${currentHost}/#/r/${lastCreated.shortCode}` : '';
+  const shortUrl = lastCreated ? `${currentHost}/${lastCreated.shortCode}` : '';
 
   const handleCopy = () => {
     if (!shortUrl) return;

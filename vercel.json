@@ -3,6 +3,22 @@
   "cleanUrls": true,
   "rewrites": [
     {
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
+    },
+    {
+      "source": "/s/:pin",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/p/:code",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/:code([a-zA-Z0-9_-]{3,64})",
+      "destination": "/api/redirect?code=$1"
+    },
+    {
       "source": "/((?!api/).*)",
       "destination": "/index.html"
     }

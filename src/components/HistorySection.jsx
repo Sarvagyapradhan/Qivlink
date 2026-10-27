@@ -176,7 +176,7 @@ export default function HistorySection({
                     </thead>
                     <tbody>
                       {filteredLinks.map((link) => {
-                        const fullUrl = `${currentHost}/#/r/${link.shortCode}`;
+                        const fullUrl = `${currentHost}/${link.shortCode}`;
                         return (
                           <tr key={link.id} className="vault-row">
                             <td>
@@ -262,7 +262,7 @@ export default function HistorySection({
                 {/* Mobile Cards View */}
                 <div className="history-mobile-cards">
                   {filteredLinks.map((link) => {
-                    const fullUrl = `${currentHost}/#/r/${link.shortCode}`;
+                    const fullUrl = `${currentHost}/${link.shortCode}`;
                     return (
                       <div key={link.id} className="history-mobile-card">
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '6px' }}>

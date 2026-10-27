@@ -57,6 +57,7 @@ export default function App() {
   // Routing states
   const [redirectCode, setRedirectCode] = useState(null);
   const [pasteDocCode, setPasteDocCode] = useState(null);
+  const [sharingPin, setSharingPin] = useState('');
 
   // Direct Google OAuth code receiver (when redirected back from Google)
   useEffect(() => {
@@ -119,11 +120,49 @@ export default function App() {
 
   const checkRoute = () => {
     const hash = window.location.hash || '';
-    if (hash.startsWith('#/r/')) {
-      const code = hash.replace('#/r/', '').trim();
-      if (code) {
-        setRedirectCode(code);
+    const pathname = window.location.pathname || '/';
+    const searchParams = new URLSearchParams(window.location.search);
+
+    // Check notfound notice from edge redirect
+    const notfound = searchParams.get('notfound');
+    if (notfound) {
+      showToast(`Short link /${notfound} not found or expired.`, 'warning');
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+
+    const tabParam = searchParams.get('tab');
+    if (tabParam && ['shorten', 'qr', 'paste', 'files', 'sharing', 'history'].includes(tabParam)) {
+      setActiveTab(tabParam);
+    }
+
+    // Direct Quick Share Note (/s/:pin or #/s/:pin)
+    if (pathname.startsWith('/s/')) {
+      const pin = pathname.replace('/s/', '').trim();
+      if (pin) {
+        setSharingPin(pin);
+        setActiveTab('sharing');
+        setRedirectCode(null);
         setPasteDocCode(null);
+        return;
+      }
+    }
+    if (hash.startsWith('#/s/')) {
+      const pin = hash.replace('#/s/', '').trim();
+      if (pin) {
+        setSharingPin(pin);
+        setActiveTab('sharing');
+        setRedirectCode(null);
+        setPasteDocCode(null);
+        return;
+      }
+    }
+
+    // Direct Paste Note (/p/:code or #/p/:code)
+    if (pathname.startsWith('/p/')) {
+      const pCode = pathname.replace('/p/', '').trim();
+      if (pCode) {
+        setPasteDocCode(pCode);
+        setRedirectCode(null);
         return;
       }
     }
@@ -135,6 +174,26 @@ export default function App() {
         return;
       }
     }
+
+    // Short Link Redirection (#/r/:code or /:code)
+    if (hash.startsWith('#/r/')) {
+      const code = hash.replace('#/r/', '').trim();
+      if (code) {
+        setRedirectCode(code);
+        setPasteDocCode(null);
+        return;
+      }
+    }
+
+    // Clean direct short URL (e.g. /pfde9w)
+    const cleanPath = pathname.replace(/^\//, '').split('/')[0];
+    const reserved = ['shorten', 'qr', 'paste', 'files', 'sharing', 'history', 'api', 'assets', 'favicon.ico'];
+    if (cleanPath && cleanPath.length >= 3 && !reserved.includes(cleanPath) && !cleanPath.includes('.')) {
+      setRedirectCode(cleanPath);
+      setPasteDocCode(null);
+      return;
+    }
+
     setRedirectCode(null);
     setPasteDocCode(null);
   };
@@ -338,6 +397,7 @@ export default function App() {
             onLimitReached={handleLimitReached}
             initialContent={sharingPrefill.content}
             initialTitle={sharingPrefill.title}
+            initialPin={sharingPin}
             showToast={showToast}
           />
         )}
