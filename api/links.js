@@ -2,14 +2,12 @@ import { createClient } from '@supabase/supabase-js';
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
-const FALLBACK_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndqanZvYnF3bm5senhzb3Zqb3Z4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMwMzEzODYsImV4cCI6MjEwODYwNzM4Nn0.pRcHOLffia7XJ1PjR9PeIYTM4P7cvQ2SjFA2RBhyvtk';
+const FALLBACK_SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndqanZvYnF3bm5senhzb3Zqb3Z4Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5MzAzMTM4NiwiZXhwIjoyMTA4NjA3Mzg2fQ.PCmiPn9GgytKy5i51zTzXZxYFjoDCqt9JmZLd9dC1tM';
 
 function getSupabaseClient() {
   const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || 'https://wjjvobqwnnlzxsovjovx.supabase.co';
-  const serviceKey = process.env.SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_SERVICE_KEY;
-  const anonKey = process.env.VITE_SUPABASE_ANON_KEY || FALLBACK_ANON_KEY;
-  const activeKey = serviceKey || anonKey;
-  return createClient(supabaseUrl, activeKey);
+  const serviceKey = process.env.SUPABASE_SERVICE_KEY || process.env.VITE_SUPABASE_SERVICE_KEY || FALLBACK_SERVICE_KEY;
+  return createClient(supabaseUrl, serviceKey);
 }
 
 const BUCKET = process.env.VITE_SUPABASE_BUCKET || 'qivlink_store';
