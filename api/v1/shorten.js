@@ -123,18 +123,23 @@ export default async function handler(req, res) {
       retention: '7 days'
     };
 
-    const updatedLinks = [newLink, ...links];
-    const payload = JSON.stringify(updatedLinks, null, 2);
-    const { error: uploadError } = await supabase.storage.from(BUCKET).upload('links.json', Buffer.from(payload, 'utf8'), {
+    // 1. Atomic write to links/<shortCode>.json (isolated, race-condition free)
+    await supabase.storage.from(BUCKET).upload(`links/${shortCode}.json`, Buffer.from(JSON.stringify(newLink, null, 2), 'utf8'), {
       upsert: true,
       contentType: 'application/json',
       cacheControl: '0'
     });
 
-    if (uploadError) {
-      console.error('Supabase upload error in v1/shorten.js:', uploadError);
-      return res.status(500).json({ success: false, error: 'Storage upload failed: ' + uploadError.message });
-    }
+    // 2. Best-effort update to links.json global listing
+    try {
+      const updatedLinks = [newLink, ...links.filter(l => l.shortCode !== shortCode)];
+      const payload = JSON.stringify(updatedLinks, null, 2);
+      await supabase.storage.from(BUCKET).upload('links.json', Buffer.from(payload, 'utf8'), {
+        upsert: true,
+        contentType: 'application/json',
+        cacheControl: '0'
+      });
+    } catch (_) {}
 
     return res.status(201).json({
       success: true,

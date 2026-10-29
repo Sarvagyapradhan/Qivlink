@@ -13,29 +13,33 @@ function getSupabaseClient() {
 
 const BUCKET = process.env.VITE_SUPABASE_BUCKET || 'qivlink_store';
 
-let cachedLinks = null;
-let lastCacheTime = 0;
-const CACHE_TTL_MS = 5000; // 5-second cache for lightning-fast edge redirects
+async function getLinkByCode(supabase, cleanCode) {
+  // Method 1: Check dedicated atomic file links/<cleanCode>.json (immune to race conditions & overwrites)
+  try {
+    const { data, error } = await supabase.storage.from(BUCKET).download(`links/${cleanCode}.json`);
+    if (data && !error) {
+      const text = await data.text();
+      const obj = JSON.parse(text);
+      if (obj && obj.targetUrl) {
+        return obj;
+      }
+    }
+  } catch (_) {}
 
-async function getLinks(supabase) {
-  const now = Date.now();
-  if (cachedLinks && (now - lastCacheTime < CACHE_TTL_MS)) {
-    return cachedLinks;
-  }
+  // Method 2: Fallback to global links.json array
   try {
     const { data, error } = await supabase.storage.from(BUCKET).download('links.json');
-    if (error || !data) return cachedLinks || [];
-    const text = await data.text();
-    const list = JSON.parse(text);
-    if (Array.isArray(list)) {
-      cachedLinks = list;
-      lastCacheTime = now;
-      return list;
+    if (data && !error) {
+      const text = await data.text();
+      const list = JSON.parse(text);
+      if (Array.isArray(list)) {
+        const found = list.find(l => l && String(l.shortCode).trim().toLowerCase() === cleanCode);
+        if (found) return found;
+      }
     }
-    return [];
-  } catch (e) {
-    return cachedLinks || [];
-  }
+  } catch (_) {}
+
+  return null;
 }
 
 export default async function handler(req, res) {
@@ -54,28 +58,23 @@ export default async function handler(req, res) {
   }
 
   const supabase = getSupabaseClient();
-  const links = await getLinks(supabase);
+  const link = await getLinkByCode(supabase, cleanCode);
   const now = Date.now();
 
-  const link = links.find(l => {
-    if (!l || !l.shortCode) return false;
-    if (now - (l.createdAt || 0) > SEVEN_DAYS_MS) return false;
-    return String(l.shortCode).trim().toLowerCase() === cleanCode;
-  });
-
   if (link && link.targetUrl) {
-    // Basic protocol security verification
-    let target = link.targetUrl.trim();
-    if (!/^https?:\/\//i.test(target)) {
-      target = 'https://' + target;
-    }
+    if (now - (link.createdAt || 0) <= SEVEN_DAYS_MS) {
+      let target = link.targetUrl.trim();
+      if (!/^https?:\/\//i.test(target)) {
+        target = 'https://' + target;
+      }
 
-    // Instant HTTP 302 redirect with zero intermediate page
-    res.writeHead(302, {
-      Location: target,
-      'Cache-Control': 'no-cache, no-store, must-revalidate'
-    });
-    return res.end();
+      // Instant HTTP 302 redirect directly to target CDN
+      res.writeHead(302, {
+        Location: target,
+        'Cache-Control': 'no-cache, no-store, must-revalidate'
+      });
+      return res.end();
+    }
   }
 
   // Link not found or expired -> redirect back to app home with notfound notification
